@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: godot-boardgame-prototype
+    runtime: node
+    plan: free
+    buildCommand: cd server && npm ci
+    startCommand: cd server && npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MAX_ROOM_PLAYERS
+        value: "8"

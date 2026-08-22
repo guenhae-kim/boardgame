@@ -1,0 +1,88 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/LobbyUI.gd" id="1"]
+
+[node name="Lobby" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.055, 0.078, 0.125, 1)
+
+[node name="Center" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Panel" type="PanelContainer" parent="Center"]
+custom_minimum_size = Vector2(430, 0)
+layout_mode = 2
+
+[node name="Content" type="VBoxContainer" parent="Center/Panel"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="Title" type="Label" parent="Center/Panel/Content"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 30
+text = "3D ONLINE ROOM"
+horizontal_alignment = 1
+
+[node name="NicknameLabel" type="Label" parent="Center/Panel/Content"]
+layout_mode = 2
+text = "닉네임"
+
+[node name="Nickname" type="LineEdit" parent="Center/Panel/Content"]
+custom_minimum_size = Vector2(0, 52)
+layout_mode = 2
+placeholder_text = "Player"
+max_length = 20
+
+[node name="CreateButton" type="Button" parent="Center/Panel/Content"]
+custom_minimum_size = Vector2(0, 58)
+layout_mode = 2
+text = "방 만들기"
+disabled = true
+
+[node name="Separator" type="HSeparator" parent="Center/Panel/Content"]
+layout_mode = 2
+
+[node name="RoomCode" type="LineEdit" parent="Center/Panel/Content"]
+custom_minimum_size = Vector2(0, 52)
+layout_mode = 2
+placeholder_text = "Room Code (예: K7DF)"
+max_length = 4
+alignment = 1
+
+[node name="JoinButton" type="Button" parent="Center/Panel/Content"]
+custom_minimum_size = Vector2(0, 58)
+layout_mode = 2
+text = "방 참가"
+disabled = true
+
+[node name="Status" type="Label" parent="Center/Panel/Content"]
+layout_mode = 2
+text = "Server: Connecting"
+horizontal_alignment = 1
+
+[node name="Error" type="Label" parent="Center/Panel/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.45, 0.45, 1)
+text = ""
+horizontal_alignment = 1
+autowrap_mode = 2
+

@@ -1,0 +1,8 @@
+.DS_Store
+client/.godot/
+server/node_modules/
+npm-debug.log*
+
+# The release Web build is intentionally committed for Render deployment.
+!client/build/web/
+!client/build/web/**

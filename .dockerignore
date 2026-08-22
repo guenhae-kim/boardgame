@@ -1,0 +1,6 @@
+.git
+.DS_Store
+client/.godot
+server/node_modules
+server/test
+npm-debug.log*
