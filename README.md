@@ -164,3 +164,4 @@ iOS Safari에서 화면이 빈 경우 기기가 WebGL 2.0을 지원하는지, �
 
 주사위 확장 시 클라이언트는 `DiceVisual`이 timestamp가 있는 snapshot buffer를 소비하게 하고, 서버만 `RigidBody3D`를 실제 계산합니다. 네트워크 transport와 Room API는 그대로 유지할 수 있습니다.
 # boardgame
+# boardgame
