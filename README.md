@@ -8,6 +8,7 @@
 - `Connecting`, `Connected`, `Disconnected`, `Error` 상태
 - 닉네임, 4자리 Room Code 생성/참가
 - 필수 닉네임과 Room 전용 하단 실시간 채팅
+- Web에서도 한글과 방향 기호가 표시되는 내장 Noto Sans KR 폰트
 - Room별 충돌 없는 `player_1`, `player_2`, ... ID
 - Room 격리와 최대 인원 설정
 - Plane, Camera3D, DirectionalLight3D, 색이 다른 Cube
@@ -166,5 +167,9 @@ iOS Safari에서 화면이 빈 경우 기기가 WebGL 2.0을 지원하는지, �
 - 주사위 물리: Node 서버를 Godot Headless 시뮬레이터로 교체하거나 별도 simulation adapter를 붙이고, `PLAYER_STATE`와 같은 방식으로 dice transform/velocity snapshot을 전송
 
 주사위 확장 시 클라이언트는 `DiceVisual`이 timestamp가 있는 snapshot buffer를 소비하게 하고, 서버만 `RigidBody3D`를 실제 계산합니다. 네트워크 transport와 Room API는 그대로 유지할 수 있습니다.
+
+## Font license
+
+`client/assets/fonts/NotoSansKR-Variable.ttf` is Noto Sans KR from Google Fonts and is distributed under the SIL Open Font License 1.1. The license text is included at `client/assets/fonts/OFL.txt`.
 # boardgame
 # boardgame
