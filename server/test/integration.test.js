@@ -45,6 +45,13 @@ test("two players can join, move, remain room-isolated, and leave", async () => 
   const { port } = server.httpServer.address();
   const url = `ws://127.0.0.1:${port}/ws`;
 
+  const page = await (await fetch(`http://127.0.0.1:${port}/`)).text();
+  assert.match(page, /src="index\.devbuild\.js"/);
+  assert.match(page, /"executable":"index\.devbuild"/);
+  const versionedAsset = await fetch(`http://127.0.0.1:${port}/index.devbuild.js`, { method: "HEAD" });
+  assert.equal(versionedAsset.status, 200);
+  assert.equal(versionedAsset.headers.get("cache-control"), "public, max-age=31536000, immutable");
+
   const a = await connect(url);
   const b = await connect(url);
   const outsider = await connect(url);

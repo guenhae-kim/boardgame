@@ -42,7 +42,11 @@ function sendError(socket, code, message) {
   send(socket, MessageType.ERROR, { code, message });
 }
 
-async function serveStatic(request, response, staticDir) {
+function normalizedBuildVersion(value) {
+  return String(value || "devbuild").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 12) || "devbuild";
+}
+
+async function serveStatic(request, response, staticDir, buildVersion) {
   const requestUrl = new URL(request.url, "http://localhost");
   if (requestUrl.pathname === "/health") {
     response.writeHead(200, { "content-type": "application/json; charset=utf-8" });
@@ -52,6 +56,12 @@ async function serveStatic(request, response, staticDir) {
 
   let pathname = decodeURIComponent(requestUrl.pathname);
   if (pathname === "/") pathname = "/index.html";
+
+  const versionedPrefix = `/index.${buildVersion}.`;
+  const isVersionedAsset = pathname.startsWith(versionedPrefix);
+  if (isVersionedAsset) {
+    pathname = `/index.${pathname.slice(versionedPrefix.length)}`;
+  }
   const resolved = path.resolve(staticDir, `.${pathname}`);
   if (!resolved.startsWith(`${path.resolve(staticDir)}${path.sep}`)) {
     response.writeHead(403).end("Forbidden");
@@ -61,11 +71,20 @@ async function serveStatic(request, response, staticDir) {
   try {
     const fileStat = await stat(resolved);
     if (!fileStat.isFile()) throw new Error("not a file");
-    const data = await readFile(resolved);
+    let data = await readFile(resolved);
+    if (pathname === "/index.html") {
+      data = Buffer.from(
+        data.toString("utf8")
+          .replaceAll("index.", `index.${buildVersion}.`)
+          .replace('"executable":"index"', `"executable":"index.${buildVersion}"`),
+      );
+    }
     const shouldRevalidate = pathname === "/index.html" || path.extname(resolved) === ".pck";
     response.writeHead(200, {
       "content-type": MIME_TYPES[path.extname(resolved)] || "application/octet-stream",
-      "cache-control": shouldRevalidate ? "no-cache" : "public, max-age=3600",
+      "cache-control": isVersionedAsset
+        ? "public, max-age=31536000, immutable"
+        : shouldRevalidate ? "no-cache" : "public, max-age=3600",
     });
     response.end(data);
   } catch {
@@ -76,8 +95,11 @@ async function serveStatic(request, response, staticDir) {
 
 export function createGameServer(options = {}) {
   const staticDir = options.staticDir || process.env.STATIC_DIR || DEFAULT_STATIC_DIR;
+  const buildVersion = normalizedBuildVersion(
+    options.buildVersion || process.env.RENDER_GIT_COMMIT || "devbuild",
+  );
   const roomManager = new RoomManager({ maxPlayers: Number(process.env.MAX_ROOM_PLAYERS) || 8 });
-  const httpServer = http.createServer((req, res) => serveStatic(req, res, staticDir));
+  const httpServer = http.createServer((req, res) => serveStatic(req, res, staticDir, buildVersion));
   const wsServer = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES });
 
   httpServer.on("upgrade", (request, socket, head) => {

@@ -9,6 +9,7 @@
 - 닉네임, 4자리 Room Code 생성/참가
 - 필수 닉네임과 Room 전용 하단 실시간 채팅
 - Web에서도 한글과 방향 기호가 표시되는 내장 Noto Sans KR 폰트
+- 배포 커밋별 Web asset URL로 브라우저 캐시 자동 무효화
 - Room별 충돌 없는 `player_1`, `player_2`, ... ID
 - Room 격리와 최대 인원 설정
 - Plane, Camera3D, DirectionalLight3D, 색이 다른 Cube
