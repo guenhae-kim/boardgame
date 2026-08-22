@@ -10,6 +10,8 @@ export const MessageType = Object.freeze({
   PLAYER_LEFT: "PLAYER_LEFT",
   PLAYER_INPUT: "PLAYER_INPUT",
   PLAYER_STATE: "PLAYER_STATE",
+  CHAT_SEND: "CHAT_SEND",
+  CHAT_MESSAGE: "CHAT_MESSAGE",
   ERROR: "ERROR",
   PING: "PING",
   PONG: "PONG",
@@ -20,6 +22,7 @@ const CLIENT_MESSAGE_TYPES = new Set([
   MessageType.CREATE_ROOM,
   MessageType.JOIN_ROOM,
   MessageType.PLAYER_INPUT,
+  MessageType.CHAT_SEND,
   MessageType.PING,
   MessageType.PONG,
 ]);

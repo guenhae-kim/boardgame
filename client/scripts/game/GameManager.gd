@@ -7,6 +7,9 @@ const PLAYER_SCENE := preload("res://scenes/Player.tscn")
 @onready var players_root: Node3D = $Players
 @onready var room_label: Label = $HUD/RoomLabel
 @onready var status_label: Label = $HUD/StatusLabel
+@onready var chat_log: RichTextLabel = $HUD/ChatPanel/Content/ChatLog
+@onready var chat_input: LineEdit = $HUD/ChatPanel/Content/Composer/ChatInput
+@onready var chat_send_button: Button = $HUD/ChatPanel/Content/Composer/SendButton
 
 var room_code := ""
 var local_player_id := ""
@@ -17,12 +20,17 @@ var _touch_up := false
 var _touch_down := false
 var _touch_left := false
 var _touch_right := false
+var _chat_lines: Array[String] = []
 
 func _ready() -> void:
 	NetworkClient.player_joined.connect(_on_player_joined)
 	NetworkClient.player_left.connect(_on_player_left)
 	NetworkClient.player_state.connect(_on_player_state)
+	NetworkClient.chat_message.connect(_on_chat_message)
+	NetworkClient.server_error.connect(_on_server_error)
 	NetworkClient.connection_status_changed.connect(_on_connection_status_changed)
+	chat_send_button.pressed.connect(_send_chat)
+	chat_input.text_submitted.connect(func(_value: String) -> void: _send_chat())
 	$HUD/Controls/Up.button_down.connect(func() -> void: _touch_up = true)
 	$HUD/Controls/Up.button_up.connect(func() -> void: _touch_up = false)
 	$HUD/Controls/Down.button_down.connect(func() -> void: _touch_down = true)
@@ -37,6 +45,8 @@ func start_room(payload: Dictionary) -> void:
 	room_code = str(payload.get("room_code", ""))
 	local_player_id = str(payload.get("player_id", ""))
 	room_label.text = "ROOM: %s" % room_code
+	_chat_lines.clear()
+	_append_chat("ROOM %s에 입장했습니다." % room_code)
 	for player_data in payload.get("players", []):
 		_spawn_or_update_player(player_data as Dictionary, true)
 
@@ -58,6 +68,8 @@ func _process(delta: float) -> void:
 	NetworkClient.send_player_input(_movement_input(), _input_sequence)
 
 func _movement_input() -> Vector2:
+	if get_viewport().gui_get_focus_owner() is LineEdit:
+		return Vector2.ZERO
 	var keyboard := Vector2(
 		float(Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT)) - float(Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT)),
 		float(Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN)) - float(Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP)),
@@ -82,12 +94,16 @@ func _spawn_or_update_player(data: Dictionary, snap: bool = false) -> void:
 	player.setup(data, id == local_player_id)
 
 func _on_player_joined(payload: Dictionary) -> void:
-	_spawn_or_update_player(payload.get("player", {}) as Dictionary, true)
+	var player_data := payload.get("player", {}) as Dictionary
+	_spawn_or_update_player(player_data, true)
+	_append_chat("%s 님이 입장했습니다." % str(player_data.get("nickname", "Player")))
 
 func _on_player_left(player_id: String) -> void:
 	if not players.has(player_id):
 		return
-	(players[player_id] as NetworkPlayer).queue_free()
+	var player := players[player_id] as NetworkPlayer
+	_append_chat("%s 님이 퇴장했습니다." % player.name_label.text.replace(" (YOU)", ""))
+	player.queue_free()
 	players.erase(player_id)
 
 func _on_player_state(payload: Dictionary) -> void:
@@ -99,3 +115,27 @@ func _on_player_state(payload: Dictionary) -> void:
 func _on_connection_status_changed(status: String) -> void:
 	status_label.text = status
 
+func _send_chat() -> void:
+	var text := chat_input.text.strip_edges()
+	if text.is_empty():
+		return
+	NetworkClient.send_chat(text.left(200))
+	chat_input.clear()
+	chat_input.release_focus()
+
+func _on_chat_message(payload: Dictionary) -> void:
+	if str(payload.get("room_code", "")) != room_code:
+		return
+	_append_chat("%s: %s" % [str(payload.get("nickname", "Player")), str(payload.get("text", ""))])
+
+func _append_chat(line: String) -> void:
+	_chat_lines.append(line)
+	if _chat_lines.size() > 50:
+		_chat_lines.pop_front()
+	chat_log.text = "\n".join(_chat_lines)
+	await get_tree().process_frame
+	chat_log.scroll_to_line(maxi(chat_log.get_line_count() - 1, 0))
+
+func _on_server_error(code: String, message: String) -> void:
+	if visible and code.begins_with("CHAT_"):
+		_append_chat("전송 실패: %s" % message)

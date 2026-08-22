@@ -22,7 +22,12 @@ func _ready() -> void:
 
 func _on_create_pressed() -> void:
 	error_label.text = ""
-	NetworkClient.create_room(_nickname())
+	var nickname := _nickname()
+	if nickname.is_empty():
+		error_label.text = "닉네임을 입력해 주세요."
+		nickname_input.grab_focus()
+		return
+	NetworkClient.create_room(nickname)
 
 func _on_join_pressed() -> void:
 	error_label.text = ""
@@ -30,11 +35,16 @@ func _on_join_pressed() -> void:
 	if code.length() != 4:
 		error_label.text = "Room Code는 4글자입니다."
 		return
-	NetworkClient.join_room(code, _nickname())
+	var nickname := _nickname()
+	if nickname.is_empty():
+		error_label.text = "닉네임을 입력해 주세요."
+		nickname_input.grab_focus()
+		return
+	NetworkClient.join_room(code, nickname)
 
 func _nickname() -> String:
 	var value := nickname_input.text.strip_edges()
-	return value.left(20) if not value.is_empty() else "Player"
+	return value.left(20)
 
 func _on_connection_status_changed(status: String) -> void:
 	status_label.text = "Server: %s" % status
@@ -49,4 +59,3 @@ func _on_room_entered(payload: Dictionary) -> void:
 
 func _on_server_error(code: String, message: String) -> void:
 	error_label.text = "%s: %s" % [code, message]
-

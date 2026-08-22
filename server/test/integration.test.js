@@ -48,6 +48,12 @@ test("two players can join, move, remain room-isolated, and leave", async () => 
   const a = await connect(url);
   const b = await connect(url);
   const outsider = await connect(url);
+  const unnamed = await connect(url);
+
+  unnamed.socket.send(encode(MessageType.CREATE_ROOM, { nickname: "   " }));
+  const nicknameError = await unnamed.next(MessageType.ERROR);
+  assert.equal(nicknameError.payload.code, "INVALID_NICKNAME");
+  unnamed.socket.close();
 
   a.socket.send(encode(MessageType.CREATE_ROOM, { nickname: "A" }));
   const created = await a.next(MessageType.ROOM_CREATED);
@@ -77,6 +83,13 @@ test("two players can join, move, remain room-isolated, and leave", async () => 
     afterA = snapshot.payload.players.find((player) => player.player_id === created.payload.player_id);
   }
   assert.ok(afterA.position.x > beforeA.position.x);
+
+  a.socket.send(encode(MessageType.CHAT_SEND, { text: "hello room" }));
+  const chat = await b.next(MessageType.CHAT_MESSAGE);
+  assert.equal(chat.payload.player_id, created.payload.player_id);
+  assert.equal(chat.payload.nickname, "A");
+  assert.equal(chat.payload.text, "hello room");
+  assert.equal(chat.payload.room_code, created.payload.room_code);
 
   b.socket.close();
   assert.equal((await a.next(MessageType.PLAYER_LEFT)).payload.player_id, joined.payload.player_id);

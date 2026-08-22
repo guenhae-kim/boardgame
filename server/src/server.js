@@ -22,9 +22,16 @@ const MIME_TYPES = {
   ".ico": "image/x-icon",
 };
 
-function safeNickname(value) {
-  const nickname = String(value || "Player").trim().slice(0, 20);
-  return nickname || "Player";
+function validatedNickname(value) {
+  const nickname = Array.from(String(value || "").trim()).slice(0, 20).join("");
+  if (!nickname) throw new ProtocolError("INVALID_NICKNAME", "Nickname is required");
+  return nickname;
+}
+
+function safeChatText(value) {
+  return Array.from(String(value || "").replace(/[\r\n\t]+/g, " ").trim())
+    .slice(0, 200)
+    .join("");
 }
 
 function send(socket, type, payload = {}) {
@@ -85,7 +92,7 @@ export function createGameServer(options = {}) {
   });
 
   wsServer.on("connection", (socket) => {
-    socket.context = { room: null, playerId: null, alive: true };
+    socket.context = { room: null, playerId: null, alive: true, lastChatAt: 0 };
     socket.on("pong", () => { socket.context.alive = true; });
     send(socket, MessageType.HELLO, {
       protocol_version: PROTOCOL_VERSION,
@@ -106,7 +113,7 @@ export function createGameServer(options = {}) {
         if (type === MessageType.CREATE_ROOM) {
           if (socket.context.room) throw new ProtocolError("ALREADY_IN_ROOM", "Already in a room");
           const room = roomManager.createRoom();
-          const player = room.addPlayer(socket, safeNickname(payload.nickname));
+          const player = room.addPlayer(socket, validatedNickname(payload.nickname));
           socket.context = { ...socket.context, room, playerId: player.id };
           send(socket, MessageType.ROOM_CREATED, {
             room_code: room.code,
@@ -121,9 +128,10 @@ export function createGameServer(options = {}) {
           if (socket.context.room) throw new ProtocolError("ALREADY_IN_ROOM", "Already in a room");
           const room = roomManager.getRoom(payload.room_code);
           if (!room) throw new ProtocolError("ROOM_NOT_FOUND", "Room code was not found");
+          const nickname = validatedNickname(payload.nickname);
           let player;
           try {
-            player = room.addPlayer(socket, safeNickname(payload.nickname));
+            player = room.addPlayer(socket, nickname);
           } catch {
             throw new ProtocolError("ROOM_FULL", "Room is full");
           }
@@ -142,6 +150,27 @@ export function createGameServer(options = {}) {
           const { room, playerId } = socket.context;
           if (!room || !playerId) throw new ProtocolError("NOT_IN_ROOM", "Join a room first");
           room.setInput(playerId, payload.direction, payload.sequence);
+          return;
+        }
+
+        if (type === MessageType.CHAT_SEND) {
+          const { room, playerId } = socket.context;
+          if (!room || !playerId) throw new ProtocolError("NOT_IN_ROOM", "Join a room first");
+          const now = Date.now();
+          if (now - socket.context.lastChatAt < 350) {
+            throw new ProtocolError("CHAT_RATE_LIMIT", "Please wait before sending another message");
+          }
+          const text = safeChatText(payload.text);
+          if (!text) throw new ProtocolError("EMPTY_CHAT", "Chat message cannot be empty");
+          socket.context.lastChatAt = now;
+          const player = room.players.get(playerId);
+          room.broadcast(MessageType.CHAT_MESSAGE, {
+            room_code: room.code,
+            player_id: playerId,
+            nickname: player.nickname,
+            text,
+            server_time: now,
+          });
           return;
         }
       } catch (error) {

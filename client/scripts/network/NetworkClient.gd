@@ -6,6 +6,7 @@ signal room_joined(payload: Dictionary)
 signal player_joined(payload: Dictionary)
 signal player_left(player_id: String)
 signal player_state(payload: Dictionary)
+signal chat_message(payload: Dictionary)
 signal server_error(code: String, message: String)
 
 var _socket := WebSocketPeer.new()
@@ -74,6 +75,9 @@ func send_player_input(direction: Vector2, sequence: int) -> void:
 		"sequence": sequence,
 	})
 
+func send_chat(text: String) -> void:
+	send_message(Protocol.CHAT_SEND, {"text": text})
+
 func send_message(type: String, payload: Dictionary = {}) -> void:
 	if _socket.get_ready_state() != WebSocketPeer.STATE_OPEN:
 		server_error.emit("NOT_CONNECTED", "Server is not connected")
@@ -101,6 +105,8 @@ func _handle_packet(text: String) -> void:
 			player_left.emit(str(payload.get("player_id", "")))
 		Protocol.PLAYER_STATE:
 			player_state.emit(payload)
+		Protocol.CHAT_MESSAGE:
+			chat_message.emit(payload)
 		Protocol.PING:
 			send_message(Protocol.PONG, {"server_time": payload.get("server_time", 0)})
 		Protocol.PONG:

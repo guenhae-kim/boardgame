@@ -109,3 +109,49 @@ offset_bottom = 220.0
 theme_override_font_sizes/font_size = 30
 text = "↓"
 
+[node name="ChatPanel" type="PanelContainer" parent="HUD"]
+anchors_preset = 8
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -500.0
+offset_top = -250.0
+offset_right = -18.0
+offset_bottom = -18.0
+grow_horizontal = 0
+grow_vertical = 0
+
+[node name="Content" type="VBoxContainer" parent="HUD/ChatPanel"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Title" type="Label" parent="HUD/ChatPanel/Content"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "ROOM CHAT"
+
+[node name="ChatLog" type="RichTextLabel" parent="HUD/ChatPanel/Content"]
+custom_minimum_size = Vector2(0, 140)
+layout_mode = 2
+size_flags_vertical = 3
+scroll_active = true
+scroll_following = true
+selection_enabled = true
+
+[node name="Composer" type="HBoxContainer" parent="HUD/ChatPanel/Content"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ChatInput" type="LineEdit" parent="HUD/ChatPanel/Content/Composer"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "메시지 입력..."
+max_length = 200
+keep_editing_on_text_submit = true
+
+[node name="SendButton" type="Button" parent="HUD/ChatPanel/Content/Composer"]
+custom_minimum_size = Vector2(78, 48)
+layout_mode = 2
+text = "전송"

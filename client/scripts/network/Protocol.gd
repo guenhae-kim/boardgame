@@ -12,6 +12,8 @@ const PLAYER_JOINED := "PLAYER_JOINED"
 const PLAYER_LEFT := "PLAYER_LEFT"
 const PLAYER_INPUT := "PLAYER_INPUT"
 const PLAYER_STATE := "PLAYER_STATE"
+const CHAT_SEND := "CHAT_SEND"
+const CHAT_MESSAGE := "CHAT_MESSAGE"
 const ERROR := "ERROR"
 const PING := "PING"
 const PONG := "PONG"
@@ -35,4 +37,3 @@ static func decode_message(text: String) -> Dictionary:
 	if typeof(message.get("payload", {})) != TYPE_DICTIONARY:
 		message["payload"] = {}
 	return message
-

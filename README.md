@@ -7,6 +7,7 @@
 - HTTPS 페이지와 같은 origin의 `WSS /ws`에 자동 연결
 - `Connecting`, `Connected`, `Disconnected`, `Error` 상태
 - 닉네임, 4자리 Room Code 생성/참가
+- 필수 닉네임과 Room 전용 하단 실시간 채팅
 - Room별 충돌 없는 `player_1`, `player_2`, ... ID
 - Room 격리와 최대 인원 설정
 - Plane, Camera3D, DirectionalLight3D, 색이 다른 Cube
@@ -14,6 +15,7 @@
 - 서버 30 Hz 시뮬레이션, 15 Hz snapshot, 클라이언트 20 Hz 입력
 - 매 렌더 프레임 exponential interpolation
 - heartbeat, 비정상 연결 timeout, 퇴장 Cube 제거
+- 채팅 200자 제한과 서버 전송 간격 검증
 - 서버 cold start를 위한 2.5초 연결 재시도
 - 프로토콜 버전과 명시적 JSON 메시지 타입
 - reconnect token 추가 위치를 예약한 응답 필드
@@ -77,7 +79,7 @@ npm start
 ./scripts/verify.sh
 ```
 
-서버 통합 테스트는 실제 WebSocket 클라이언트 3개로 생성, 참가, 이동, Room 격리, 퇴장을 검사합니다.
+서버 통합 테스트는 실제 WebSocket 클라이언트 4개로 필수 닉네임, 생성, 참가, 이동, 채팅, Room 격리, 퇴장을 검사합니다.
 
 ## Web export
 
@@ -148,6 +150,7 @@ Phone B:
 - 양쪽 화면에 빨강/파랑 Cube와 두 닉네임이 보인다.
 - 양쪽에서 터치 방향키를 동시에 눌러도 각자 자신의 Cube가 움직인다.
 - 상대 Cube가 순간이동하지 않고 보간되어 움직인다.
+- 하단 채팅에 보낸 메시지가 양쪽 화면에 같은 닉네임으로 표시된다.
 - 한쪽 탭을 닫은 뒤 heartbeat/close가 처리되면 상대 화면에서 Cube가 사라진다.
 - 잘못된 Room Code는 `ROOM_NOT_FOUND`를 표시한다.
 
