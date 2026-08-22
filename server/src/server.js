@@ -62,9 +62,10 @@ async function serveStatic(request, response, staticDir) {
     const fileStat = await stat(resolved);
     if (!fileStat.isFile()) throw new Error("not a file");
     const data = await readFile(resolved);
+    const shouldRevalidate = pathname === "/index.html" || path.extname(resolved) === ".pck";
     response.writeHead(200, {
       "content-type": MIME_TYPES[path.extname(resolved)] || "application/octet-stream",
-      "cache-control": pathname === "/index.html" ? "no-cache" : "public, max-age=3600",
+      "cache-control": shouldRevalidate ? "no-cache" : "public, max-age=3600",
     });
     response.end(data);
   } catch {
