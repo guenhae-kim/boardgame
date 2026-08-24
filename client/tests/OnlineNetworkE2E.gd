@@ -7,12 +7,15 @@ func _init() -> void:
 
 func _run() -> void:
 	var network := root.get_node("NetworkClient")
+	var server_url := _server_url()
 	# Native test runs share user:// storage; start this integration case with a
 	# deliberately fresh browser-equivalent session.
 	network._clear_session()
 	network._socket.close()
 	await create_timer(0.1).timeout
-	network.connect_to_server()
+	network._socket = WebSocketPeer.new()
+	network._last_state = WebSocketPeer.STATE_CONNECTING
+	network._socket.connect_to_url(server_url)
 	var waited := 0.0
 	while network._socket.get_ready_state() != WebSocketPeer.STATE_OPEN and waited < 5.0:
 		await create_timer(0.05).timeout; waited += 0.05
@@ -29,7 +32,7 @@ func _run() -> void:
 	_check(str(created.get("reconnect_token", "")).length() > 20, "host receives a persistent reconnect token")
 
 	var guest := WebSocketPeer.new()
-	guest.connect_to_url("ws://127.0.0.1:8080/ws")
+	guest.connect_to_url(server_url)
 	await _wait_socket_open(guest)
 	await _next_message(guest, Protocol.HELLO)
 	guest.send_text(Protocol.encode_message(Protocol.JOIN_ROOM, {"room_code": created["room_code"], "nickname": "Guest"}))
@@ -61,6 +64,12 @@ func _run() -> void:
 	guest.close()
 	print("Godot/Node online E2E: ", "FAILED" if failed else "PASSED")
 	quit(1 if failed else 0)
+
+func _server_url() -> String:
+	for argument in OS.get_cmdline_user_args():
+		if argument.begins_with("--server-url="):
+			return argument.trim_prefix("--server-url=")
+	return "ws://127.0.0.1:8080/ws"
 
 func _wait_array(holder: Array, timeout := 2.0) -> void:
 	var elapsed := 0.0

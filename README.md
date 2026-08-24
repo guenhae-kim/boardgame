@@ -89,6 +89,7 @@ npm start
 ```bash
 ./scripts/verify.sh
 godot --headless --path client --script res://tests/OnlineNetworkE2E.gd
+godot --headless --path client --script res://tests/OnlineNetworkE2E.gd -- --server-url=wss://godot-boardgame-prototype.onrender.com/ws
 ```
 
 검증 범위:
