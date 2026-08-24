@@ -1,12 +1,18 @@
 ; Engine configuration file.
-; Edit using the Godot editor when possible.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
 
 config_version=5
 
 [application]
 
 config/name="Boardgame Network Prototype"
-run/main_scene="res://scenes/Main.tscn"
+run/main_scene="res://scenes/LocalGame.tscn"
+config/features=PackedStringArray("4.7")
 config/icon="res://icon.svg"
 
 [autoload]
@@ -15,11 +21,12 @@ NetworkClient="*res://scripts/network/NetworkClient.gd"
 
 [display]
 
-window/size/viewport_width=1280
-window/size/viewport_height=720
-window/size/window_width_override=960
-window/size/window_height_override=540
+window/size/viewport_width=1080
+window/size/viewport_height=1920
+window/size/window_width_override=1080
+window/size/window_height_override=1920
 window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
 window/handheld/orientation=1
 
 [gui]
@@ -31,9 +38,4 @@ theme/custom_font="res://assets/fonts/NotoSansKR-Variable.ttf"
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
 textures/vram_compression/import_etc2_astc=true
-textures/default_filters/use_nearest_mipmap_filter=false
 environment/defaults/default_clear_color=Color(0.07, 0.1, 0.16, 1)
-
-[network]
-
-limits/debugger/max_chars_per_second=32768

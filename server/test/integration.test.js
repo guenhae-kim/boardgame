@@ -105,3 +105,116 @@ test("two players can join, move, remain room-isolated, and leave", async () => 
   outsider.socket.close();
   await server.close();
 });
+
+test("host authority, CPU lobby, private state routing, action order, and reconnect", async () => {
+  const server = createGameServer();
+  await new Promise((resolve) => server.httpServer.listen(0, "127.0.0.1", resolve));
+  const { port } = server.httpServer.address();
+  const url = `ws://127.0.0.1:${port}/ws`;
+  const host = await connect(url);
+  const guest = await connect(url);
+  host.socket.send(encode(MessageType.CREATE_ROOM, { nickname: "Host" }));
+  const created = await host.next(MessageType.ROOM_CREATED);
+  guest.socket.send(encode(MessageType.JOIN_ROOM, { nickname: "Guest", room_code: created.payload.room_code }));
+  const joined = await guest.next(MessageType.ROOM_JOINED);
+
+  host.socket.send(encode(MessageType.LOBBY_CPU, { count: 2 }));
+  let withCpus;
+  for (let i = 0; i < 4; i += 1) {
+    const lobby = await host.next(MessageType.LOBBY_STATE);
+    if (lobby.payload.players.length === 4) { withCpus = lobby; break; }
+  }
+  assert.ok(withCpus);
+  assert.equal(withCpus.payload.players.filter((player) => player.is_cpu).length, 2);
+  host.socket.send(encode(MessageType.START_GAME, { fill_cpu: true }));
+  const authorityRequest = await host.next(MessageType.GAME_AUTHORITY_REQUEST);
+  assert.equal(authorityRequest.payload.players.length, 4);
+
+  const players = authorityRequest.payload.players.map((player) => ({
+    id: player.player_id, name: player.nickname, is_cpu: player.is_cpu, money: 3,
+  }));
+  const publicState = { players, current_player_index: 1, phase: "PLAYING" };
+  const privateStates = Object.fromEntries(players.map((player) => [player.id, {
+    player_id: player.id, final_cards: [`secret_${player.id}`],
+  }]));
+  host.socket.send(encode(MessageType.GAME_COMMIT, {
+    actor_id: "", events: [], public_state: publicState,
+    private_states: privateStates, authority_state: { ...publicState, privateStates },
+  }));
+  const hostUpdate = await host.next(MessageType.GAME_UPDATE);
+  const guestUpdate = await guest.next(MessageType.GAME_UPDATE);
+  assert.ok(hostUpdate.payload.authority_state);
+  assert.equal(guestUpdate.payload.authority_state, undefined);
+  assert.deepEqual(guestUpdate.payload.private_state.final_cards, [`secret_${joined.payload.player_id}`]);
+  assert.doesNotMatch(JSON.stringify(guestUpdate.payload), /secret_player_1/);
+  host.socket.send(encode(MessageType.GAME_READY, { game_sequence: 1 }));
+  guest.socket.send(encode(MessageType.GAME_READY, { game_sequence: 1 }));
+  await host.next(MessageType.GAME_UNLOCK);
+  await guest.next(MessageType.GAME_UNLOCK);
+
+  guest.socket.send(encode(MessageType.GAME_ACTION, {
+    request_id: "guest-action-1", action: { type: "ROLL_DIE", data: {} },
+  }));
+  const request = await host.next(MessageType.GAME_ACTION_REQUEST);
+  assert.equal(request.payload.actor_id, joined.payload.player_id);
+  const advanced = { ...publicState, current_player_index: 2 };
+  host.socket.send(encode(MessageType.GAME_COMMIT, {
+    actor_id: joined.payload.player_id,
+    events: [{ type: "DIE_ROLLED", data: { die: "blue", camel: "blue", value: 3 } }],
+    public_state: advanced, private_states: privateStates,
+    authority_state: { ...advanced, privateStates },
+  }));
+  assert.equal((await guest.next(MessageType.GAME_UPDATE)).payload.game_sequence, 2);
+
+  guest.socket.close();
+  await host.next(MessageType.PLAYER_LEFT);
+  const resumed = await connect(url);
+  resumed.socket.send(encode(MessageType.RECONNECT, {
+    room_code: created.payload.room_code, reconnect_token: joined.payload.reconnect_token,
+  }));
+  const rejoined = await resumed.next(MessageType.ROOM_JOINED);
+  assert.equal(rejoined.payload.player_id, joined.payload.player_id);
+  const restored = await resumed.next(MessageType.GAME_UPDATE);
+  assert.equal(restored.payload.game_sequence, 2);
+  assert.deepEqual(restored.payload.private_state.final_cards, [`secret_${joined.payload.player_id}`]);
+
+  host.socket.close();
+  resumed.socket.close();
+  await server.close();
+});
+
+test("host can fill all three empty slots with CPU players", async () => {
+  const server = createGameServer();
+  await new Promise((resolve) => server.httpServer.listen(0, "127.0.0.1", resolve));
+  const { port } = server.httpServer.address();
+  const host = await connect(`ws://127.0.0.1:${port}/ws`);
+  host.socket.send(encode(MessageType.CREATE_ROOM, { nickname: "Solo Host" }));
+  await host.next(MessageType.ROOM_CREATED);
+  host.socket.send(encode(MessageType.LOBBY_CPU, { count: 3 }));
+  host.socket.send(encode(MessageType.START_GAME, { fill_cpu: true }));
+  const request = await host.next(MessageType.GAME_AUTHORITY_REQUEST);
+  assert.equal(request.payload.players.length, 4);
+  assert.equal(request.payload.players.filter((player) => player.is_cpu).length, 3);
+  host.socket.close();
+  await server.close();
+});
+
+test("four human clients occupy four stable slots without CPU fill", async () => {
+  const server = createGameServer();
+  await new Promise((resolve) => server.httpServer.listen(0, "127.0.0.1", resolve));
+  const { port } = server.httpServer.address();
+  const url = `ws://127.0.0.1:${port}/ws`;
+  const clients = await Promise.all([connect(url), connect(url), connect(url), connect(url)]);
+  clients[0].socket.send(encode(MessageType.CREATE_ROOM, { nickname: "P1" }));
+  const created = await clients[0].next(MessageType.ROOM_CREATED);
+  for (let index = 1; index < clients.length; index += 1) {
+    clients[index].socket.send(encode(MessageType.JOIN_ROOM, { room_code: created.payload.room_code, nickname: `P${index + 1}` }));
+    await clients[index].next(MessageType.ROOM_JOINED);
+  }
+  clients[0].socket.send(encode(MessageType.START_GAME, { fill_cpu: false }));
+  const request = await clients[0].next(MessageType.GAME_AUTHORITY_REQUEST);
+  assert.deepEqual(request.payload.players.map((player) => player.player_id), ["player_1", "player_2", "player_3", "player_4"]);
+  assert.equal(request.payload.players.some((player) => player.is_cpu), false);
+  for (const client of clients) client.socket.close();
+  await server.close();
+});

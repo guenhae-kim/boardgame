@@ -8,7 +8,7 @@ import { RoomManager } from "./RoomManager.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_STATIC_DIR = path.resolve(__dirname, "../../client/build/web");
-const MAX_MESSAGE_BYTES = 16 * 1024;
+const MAX_MESSAGE_BYTES = 128 * 1024;
 const SIMULATION_HZ = 30;
 const SNAPSHOT_HZ = 15;
 
@@ -141,9 +141,11 @@ export function createGameServer(options = {}) {
           send(socket, MessageType.ROOM_CREATED, {
             room_code: room.code,
             player_id: player.id,
-            reconnect_token: null,
+            reconnect_token: player.reconnectToken,
             players: room.publicPlayers(),
+            lobby: room.lobbyPayload(),
           });
+          room.broadcastLobby();
           return;
         }
 
@@ -153,19 +155,36 @@ export function createGameServer(options = {}) {
           if (!room) throw new ProtocolError("ROOM_NOT_FOUND", "Room code was not found");
           const nickname = validatedNickname(payload.nickname);
           let player;
-          try {
-            player = room.addPlayer(socket, nickname);
-          } catch {
-            throw new ProtocolError("ROOM_FULL", "Room is full");
-          }
+          player = room.addPlayer(socket, nickname);
           socket.context = { ...socket.context, room, playerId: player.id };
           send(socket, MessageType.ROOM_JOINED, {
             room_code: room.code,
             player_id: player.id,
-            reconnect_token: null,
+            reconnect_token: player.reconnectToken,
             players: room.publicPlayers(),
+            lobby: room.lobbyPayload(),
           });
           room.broadcast(MessageType.PLAYER_JOINED, { player: room.publicPlayer(player) }, socket);
+          room.broadcastLobby();
+          return;
+        }
+
+        if (type === MessageType.RECONNECT) {
+          if (socket.context.room) throw new ProtocolError("ALREADY_IN_ROOM", "Already in a room");
+          const room = roomManager.getRoom(payload.room_code);
+          if (!room) throw new ProtocolError("ROOM_NOT_FOUND", "Room code was not found");
+          const player = room.reconnect(socket, String(payload.reconnect_token || ""));
+          socket.context = { ...socket.context, room, playerId: player.id };
+          send(socket, MessageType.ROOM_JOINED, {
+            room_code: room.code,
+            player_id: player.id,
+            reconnect_token: player.reconnectToken,
+            players: room.publicPlayers(),
+            lobby: room.lobbyPayload(),
+            reconnected: true,
+          });
+          room.broadcastLobby();
+          if (room.started) room.sendGameUpdate(player);
           return;
         }
 
@@ -173,6 +192,41 @@ export function createGameServer(options = {}) {
           const { room, playerId } = socket.context;
           if (!room || !playerId) throw new ProtocolError("NOT_IN_ROOM", "Join a room first");
           room.setInput(playerId, payload.direction, payload.sequence);
+          return;
+        }
+
+        if (type === MessageType.LOBBY_CPU) {
+          const { room, playerId } = socket.context;
+          if (!room || !playerId) throw new ProtocolError("NOT_IN_ROOM", "Join a room first");
+          room.setCpuCount(playerId, payload.count);
+          return;
+        }
+
+        if (type === MessageType.START_GAME) {
+          const { room, playerId } = socket.context;
+          if (!room || !playerId) throw new ProtocolError("NOT_IN_ROOM", "Join a room first");
+          room.startGame(playerId, payload.fill_cpu !== false);
+          return;
+        }
+
+        if (type === MessageType.GAME_ACTION) {
+          const { room, playerId } = socket.context;
+          if (!room || !playerId) throw new ProtocolError("NOT_IN_ROOM", "Join a room first");
+          room.requestGameAction(playerId, payload.action, payload.request_id);
+          return;
+        }
+
+        if (type === MessageType.GAME_COMMIT) {
+          const { room, playerId } = socket.context;
+          if (!room || !playerId) throw new ProtocolError("NOT_IN_ROOM", "Join a room first");
+          room.commitGame(playerId, payload);
+          return;
+        }
+
+        if (type === MessageType.GAME_READY) {
+          const { room, playerId } = socket.context;
+          if (!room || !playerId) throw new ProtocolError("NOT_IN_ROOM", "Join a room first");
+          room.acknowledgeGameReady(playerId, payload.game_sequence);
           return;
         }
 
@@ -205,8 +259,11 @@ export function createGameServer(options = {}) {
     socket.on("close", () => {
       const { room, playerId } = socket.context;
       if (!room || !playerId) return;
-      const player = room.removePlayer(playerId);
-      if (player) room.broadcast(MessageType.PLAYER_LEFT, { player_id: playerId });
+      const player = room.markDisconnected(playerId, socket);
+      if (player) {
+        room.broadcast(MessageType.PLAYER_LEFT, { player_id: playerId, reconnecting: true });
+        room.broadcastLobby();
+      }
       roomManager.removeIfEmpty(room);
     });
   });

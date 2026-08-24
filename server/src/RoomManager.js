@@ -31,7 +31,10 @@ export class RoomManager {
   }
 
   simulate(deltaSeconds) {
-    for (const room of this.rooms.values()) room.simulate(deltaSeconds);
+    for (const room of this.rooms.values()) {
+      room.simulate(deltaSeconds);
+      this.removeIfEmpty(room);
+    }
   }
 
   broadcastSnapshots(serverTime) {

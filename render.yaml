@@ -10,4 +10,4 @@ services:
       - key: NODE_ENV
         value: production
       - key: MAX_ROOM_PLAYERS
-        value: "8"
+        value: "4"

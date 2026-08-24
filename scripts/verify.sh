@@ -8,6 +8,10 @@ cd "$PROJECT_DIR/server"
 npm test
 
 cd "$PROJECT_DIR"
+godot --headless --path client --script res://tests/RuleTests.gd
+godot --headless --path client --script res://tests/FlowTests.gd
+godot --headless --path client --script res://tests/DiceSafetyTests.gd
+godot --headless --path client --script res://tests/OnlineFlowTests.gd
 "$PROJECT_DIR/scripts/export_web.sh"
 
 echo "Server tests and Godot Web export passed."

@@ -1,71 +1,82 @@
-# Godot 4 Web 3D Multiplayer Prototype
+# Boardgame Online — Godot 4 Web
 
-모바일 브라우저 두 대가 같은 Room에 접속해 각자의 Cube를 동시에 움직이는 최소 완성형 프로젝트입니다. Node.js 서버가 Room과 위치의 권위를 가지며, Godot 클라이언트는 입력을 보내고 15 Hz snapshot을 60 fps 렌더링에서 보간합니다.
+Godot 4.7/GDScript로 만든 3D 동물 경주 보드게임과 Node.js WebSocket 서버입니다. 방 생성/참가부터 4인 로비, CPU, 비공개 손패, 직접 보드 상호작용, 동기화된 주사위·말 연출, 채팅, 재접속까지 한 서비스에서 실행합니다.
 
-## 구현 범위
+현재 공개 서비스: <https://godot-boardgame-prototype.onrender.com/>
 
-- HTTPS 페이지와 같은 origin의 `WSS /ws`에 자동 연결
-- `Connecting`, `Connected`, `Disconnected`, `Error` 상태
-- 닉네임, 4자리 Room Code 생성/참가
-- 필수 닉네임과 Room 전용 하단 실시간 채팅
-- Web에서도 한글과 방향 기호가 표시되는 내장 Noto Sans KR 폰트
-- 배포 커밋별 Web asset URL로 브라우저 캐시 자동 무효화
-- Room별 충돌 없는 `player_1`, `player_2`, ... ID
-- Room 격리와 최대 인원 설정
-- Plane, Camera3D, DirectionalLight3D, 색이 다른 Cube
-- 모바일 터치 방향키와 PC WASD/방향키
-- 서버 30 Hz 시뮬레이션, 15 Hz snapshot, 클라이언트 20 Hz 입력
-- 매 렌더 프레임 exponential interpolation
-- heartbeat, 비정상 연결 timeout, 퇴장 Cube 제거
-- 채팅 200자 제한과 서버 전송 간격 검증
-- 서버 cold start를 위한 2.5초 연결 재시도
-- 프로토콜 버전과 명시적 JSON 메시지 타입
-- reconnect token 추가 위치를 예약한 응답 필드
+## 현재 플레이 흐름
 
-## 폴더 구조
+1. 닉네임으로 방을 만들거나 4자리 코드로 참가합니다.
+2. Host가 CPU 수를 조절하고 빈 자리를 CPU로 채워 게임을 시작합니다.
+3. Host의 `GameRules` 하나만 authoritative state를 계산합니다.
+4. 서버는 공개 상태와 각 수신자 전용 비공개 손패를 따로 전송합니다.
+5. 모든 접속자가 받은 `GameEvent` 연출을 끝내고 `GAME_READY`를 보낸 뒤에만 서버가 다음 행동을 엽니다.
+6. 자기 턴에는 손패 카드→예측 구역, 관중 타일→트랙 칸, 구간 베팅→3D 카드 더미처럼 보드를 직접 누릅니다.
+7. CPU도 사람과 같은 `Action → GameRules` 경로를 사용합니다.
+
+## 구조
 
 ```text
 boardgame-network/
 ├── client/
-│   ├── project.godot
-│   ├── export_presets.cfg
-│   ├── scenes/
-│   │   ├── Main.tscn
-│   │   ├── Lobby.tscn
-│   │   ├── Game.tscn
-│   │   └── Player.tscn
+│   ├── project.godot, export_presets.cfg
+│   ├── scenes/{Main,Lobby,OnlineGame,LocalGame}.tscn
 │   ├── scripts/
-│   │   ├── Main.gd
-│   │   ├── network/{NetworkClient,NetworkConfig,Protocol}.gd
-│   │   ├── game/{GameManager,Player}.gd
-│   │   └── ui/LobbyUI.gd
-│   └── build/web/          # 배포 가능한 release export
+│   │   ├── rules/{GameState,GameRules,GameAction,GameEvent}.gd
+│   │   ├── network/{NetworkClient,NetworkConfig,Protocol,GameProjection}.gd
+│   │   ├── game/{OnlineGameController,CPUController}.gd
+│   │   ├── flow/{GameFlowController,GameEventQueue}.gd
+│   │   ├── local/BoardVisual.gd
+│   │   ├── visual/{DiceController,PieceVisual,CameraDirector,SoundManager}.gd
+│   │   └── ui/{LobbyUI,RoomLobbyUI,OnlineGameUI,LocalGameUI}.gd
+│   ├── tests/
+│   └── build/web/
 ├── server/
-│   ├── package.json
-│   ├── Dockerfile
-│   ├── src/{server,protocol,RoomManager,Room}.js
-│   └── test/integration.test.js
+│   ├── src/{server,RoomManager,Room,protocol}.js
+│   ├── test/integration.test.js
+│   └── Dockerfile
 ├── scripts/{export_web,verify}.sh
-└── render.yaml
+├── render.yaml
+└── THIRD_PARTY_ASSETS.md
 ```
 
-## 구조와 데이터 흐름
+`LocalGame.tscn`은 빠른 룰/연출 개발용입니다. 실제 시작 Scene은 `Main.tscn`이며 온라인 로비와 `OnlineGame.tscn`을 사용합니다.
+
+## 권위 상태와 비공개 정보
 
 ```text
-터치/WASD → GameManager → NetworkClient → PLAYER_INPUT
-                                      ↓
-                               Node Room (권위 상태)
-                                      ↓ 15 Hz PLAYER_STATE
-Player visual ← GameManager ← NetworkClient ← snapshot
-     ↓
-매 프레임 목표 position/rotation으로 interpolation
+Human UI / CPUController
+          ↓ GameAction
+Node Room 검증 → Host GameRules.apply_action()
+          ↓ GAME_COMMIT
+Node Room: authority_state + public_state + private_states[player_id]
+          ↓ 수신자별 GAME_UPDATE
+각 Client GameEventQueue → 3D 연출 완료 → GAME_READY
+          ↓ 모두 완료
+       GAME_UNLOCK → 다음 행동
 ```
 
-`Protocol.gd`/`protocol.js`가 전송 형식을 담당하고, `Room`이 서버 상태와 시뮬레이션을 담당하며, `Player.gd`는 표현과 보간만 담당합니다. 따라서 Cube를 동물 Scene으로 교체해도 Room과 네트워크 계층은 유지됩니다.
+- `authority_state`: Host에게만 전송되는 완전한 저장 상태
+- `public_state`: 말 위치/스택, 턴, 공개 주사위, 돈, 남은 베팅 카드, prediction 카드의 제출 순서/소유자
+- `private_state`: 해당 플레이어 자신의 `final_cards`만 포함
+- 다른 플레이어의 비밀 예측 내용은 서버 패킷 자체에 포함되지 않습니다.
 
-## 로컬 실행
+현재 버전은 **Host-authoritative**입니다. Host가 짧게 끊기면 reconnect token으로 복구되고 게임은 기다립니다. Host migration은 다음 서버-authoritative 이관 단계의 범위입니다.
 
-필수 도구는 Godot 4.3 이상(GDScript Web single-thread export 지원)과 Node.js 20 이상입니다.
+## 새 온라인 메시지
+
+기본 `HELLO/CREATE_ROOM/JOIN_ROOM/PING/PONG/ERROR`에 다음 흐름을 사용합니다.
+
+- 로비: `RECONNECT`, `LOBBY_STATE`, `LOBBY_CPU`, `START_GAME`
+- 권위 게임: `GAME_AUTHORITY_REQUEST`, `GAME_ACTION`, `GAME_ACTION_REQUEST`, `GAME_COMMIT`, `GAME_UPDATE`
+- 연출 장벽: `GAME_READY`, `GAME_UNLOCK`
+- 채팅: `CHAT_SEND`, `CHAT_MESSAGE`
+
+채팅은 Room 안에서만 broadcast되며 공백 차단, 200자 제한, 350ms rate limit이 적용됩니다. 게임 Action 처리와 별도 경로입니다.
+
+## 로컬 실행과 검증
+
+요구 사항: Godot 4.7.x, Node.js 20 이상.
 
 ```bash
 cd server
@@ -73,104 +84,77 @@ npm ci
 npm start
 ```
 
-서버가 `http://127.0.0.1:8080`에서 Web build도 함께 제공합니다. 브라우저에서 해당 주소를 열거나, Godot Editor에서 `client/project.godot`을 열고 F6/F5로 실행합니다.
-
-전체 자동 검증:
+그 후 <http://127.0.0.1:8080/>을 열면 Web Export가 실행됩니다. Godot Editor에서는 `client/project.godot`을 연 뒤 **F6가 아니라 F5**로 온라인 Main Scene을 실행합니다. `LocalGame.tscn`의 F6 실행은 개발용 dropdown/debug 화면입니다.
 
 ```bash
 ./scripts/verify.sh
+godot --headless --path client --script res://tests/OnlineNetworkE2E.gd
 ```
 
-서버 통합 테스트는 실제 WebSocket 클라이언트 4개로 필수 닉네임, 생성, 참가, 이동, 채팅, Room 격리, 퇴장을 검사합니다.
+검증 범위:
 
-## Web export
+- 규칙 69개: 이동/스택/관중 타일/구간 정산/최종 예측/승자/private projection/CPU 완주
+- 3D Flow: 이벤트 큐가 끝난 뒤에만 다음 턴
+- Dice Safety: 여섯 색, 약/강 투척 모두 트레이 내부 유지
+- Online UI: 손패, 내 턴 잠금, prediction/track 직접 대상
+- Node 통합: Room 격리, Host/CPU, private routing, action order, reconnect
+- 실제 Godot+Node E2E: 두 WebSocket 클라이언트가 동일 sequence의 주사위/이동 Event 수신
 
-Godot Editor에서 `client/project.godot`을 연 뒤:
+테스트 종료 때 표시되는 dummy-renderer RID 경고는 강제 종료형 headless Scene 테스트의 정리 경고이며 assertion 실패가 아닙니다.
 
-1. Editor → Manage Export Templates에서 현재 Godot 버전의 template을 설치합니다.
-2. Project → Export → Web을 선택합니다.
-3. Export Project를 눌러 `client/build/web/index.html`로 내보냅니다.
-
-CLI에서는 다음 한 줄로 동일하게 export합니다.
+## Web Export와 서버 주소
 
 ```bash
 ./scripts/export_web.sh
 ```
 
-프로젝트는 Compatibility renderer, WebGL 2.0, single-thread Web export를 사용합니다. Thread support를 끄기 때문에 COOP/COEP 헤더가 필요 없고 모바일 Safari/Chrome에서 호환성이 더 좋습니다. `index.html`을 `file://`로 직접 열지 말고 반드시 HTTP(S) 서버에서 제공해야 합니다.
+결과는 `client/build/web/index.html`입니다. Compatibility renderer와 single-thread Web export를 사용합니다.
 
-## 서버 주소 변경 위치
+- Web: 현재 페이지와 같은 origin의 `/ws`를 사용합니다. HTTPS에서는 자동으로 WSS입니다.
+- Editor/native: `client/scripts/network/NetworkConfig.gd`의 `LOCAL_SERVER_URL`만 변경합니다.
 
-- Web export: 페이지와 같은 host의 `/ws`를 자동 사용합니다. 예를 들어 게임이 `https://my-game.onrender.com`에 있으면 자동으로 `wss://my-game.onrender.com/ws`에 연결됩니다. 변경할 주소가 없습니다.
-- Godot Editor/native export: `client/scripts/network/NetworkConfig.gd`의 `LOCAL_SERVER_URL` 한 곳을 변경합니다.
-
-Web 게임과 WebSocket 서버를 한 Render 서비스에서 제공하므로 mixed-content, CORS, 서로 다른 배포 URL 동기화 문제를 피합니다.
+따라서 배포 URL을 GDScript 여러 곳에 hard-code하지 않으며 mixed-content도 발생하지 않습니다.
 
 ## Render 배포
 
-현재 공식 정책상 Render 무료 Web Service는 public WebSocket, 관리형 TLS, `onrender.com` URL을 지원합니다. 15분간 유입 요청/WebSocket 메시지가 없으면 sleep하며 다음 접속에서 약 1분의 cold start가 생길 수 있습니다. 프로토타입에는 적합하지만 상시 게임 서버는 이후 유료 인스턴스가 적합합니다.
-
-배포 전 `./scripts/verify.sh`를 실행하고 생성된 `client/build/web`도 Git에 포함해 저장소에 push합니다. 그 다음:
-
-1. [Render Dashboard](https://dashboard.render.com/)에 로그인합니다.
-2. New → Blueprint를 선택합니다.
-3. 이 프로젝트가 들어 있는 GitHub/GitLab 저장소를 연결합니다.
-4. 저장소 루트의 `render.yaml`을 승인합니다.
-5. `godot-boardgame-prototype` Free Web Service 생성을 승인합니다.
-6. deploy 완료 후 `https://<생성된 이름>.onrender.com/health`에서 `{"ok":true}`를 확인합니다.
-7. 같은 URL의 `/`에 접속하면 게임이 실행됩니다. WSS endpoint는 자동으로 `wss://<생성된 이름>.onrender.com/ws`입니다.
-
-계정 로그인과 Git 저장소 연결/승인은 사용자 계정 권한이 필요합니다. 코드에는 API key나 비밀번호가 필요하지 않습니다.
-
-Docker로 다른 Linux 서비스에 배포할 수도 있습니다.
+이 저장소의 `render.yaml`은 Web build 정적 파일과 Node WebSocket 서버를 한 서비스로 배포합니다.
 
 ```bash
-docker build -f server/Dockerfile -t godot-boardgame .
-docker run --rm -p 8080:8080 -e PORT=8080 godot-boardgame
+git add .
+git commit -m "Add playable authoritative online board game"
+git push origin main
 ```
 
-컨테이너는 `0.0.0.0:$PORT`를 사용하며 앞단 reverse proxy에서 HTTPS/WSS를 종료하면 됩니다.
+연결된 Render Blueprint가 자동 배포된 뒤 확인합니다.
 
-## 휴대폰 두 대 최종 테스트
+- Health: <https://godot-boardgame-prototype.onrender.com/health>
+- Game: <https://godot-boardgame-prototype.onrender.com/>
+- WebSocket: `wss://godot-boardgame-prototype.onrender.com/ws`
 
-무료 서버가 sleep 중일 수 있으므로 먼저 게임 URL을 열고 `Connected`가 될 때까지 최대 약 1분 기다립니다.
+무료 인스턴스가 sleep 상태면 첫 접속에 시간이 걸릴 수 있습니다. 다른 Linux 서비스에서는 `server/Dockerfile`로 동일하게 배포할 수 있습니다.
 
-Phone A:
+## 휴대폰 두 대 테스트
 
-1. Wi-Fi에 연결하고 Chrome/Safari에서 게임 HTTPS URL을 엽니다.
-2. 닉네임 `A`를 입력하고 `방 만들기`를 누릅니다.
-3. 화면 왼쪽 위 `ROOM: XXXX`를 Phone B에 전달합니다.
+Phone A(Wi-Fi):
 
-Phone B:
+1. 게임 URL 접속 → `Connected` 대기
+2. 닉네임 A → 방 만들기
+3. Room Code 확인
 
-1. Wi-Fi를 끄고 LTE/5G에 연결합니다.
-2. 같은 HTTPS URL을 엽니다.
-3. 닉네임 `B`와 전달받은 코드를 입력하고 `방 참가`를 누릅니다.
+Phone B(LTE/5G):
 
-확인 항목:
+1. 같은 URL 접속
+2. 닉네임 B와 Room Code → 참가
+3. 양쪽 로비에서 두 Human slot 확인
 
-- 양쪽 화면에 빨강/파랑 Cube와 두 닉네임이 보인다.
-- 양쪽에서 터치 방향키를 동시에 눌러도 각자 자신의 Cube가 움직인다.
-- 상대 Cube가 순간이동하지 않고 보간되어 움직인다.
-- 하단 채팅에 보낸 메시지가 양쪽 화면에 같은 닉네임으로 표시된다.
-- 한쪽 탭을 닫은 뒤 heartbeat/close가 처리되면 상대 화면에서 Cube가 사라진다.
-- 잘못된 Room Code는 `ROOM_NOT_FOUND`를 표시한다.
+Host:
 
-iOS Safari에서 화면이 빈 경우 기기가 WebGL 2.0을 지원하는지, 저전력 모드/콘텐츠 차단 설정, Safari Web Inspector 오류를 확인합니다. HTTPS 페이지에서 `ws://`로 수동 변경하면 mixed-content로 차단되므로 Web에서는 자동 same-origin 설정을 유지합니다.
+1. `빈 자리 CPU로 채우기` 활성화
+2. 게임 시작
+3. 자기 턴에 손패/보드 대상을 직접 선택
 
-## 향후 실제 게임으로 확장할 위치
+확인 항목: Host만 Start, CPU 2명, 서로 다른 private hand, 내 턴만 Action, 동일 주사위/말 이동/돈/턴, 3D history 5개 후 구간 정산, 같은 Room 채팅, 페이지 refresh 후 동일 player 복구.
 
-- 동물/애니메이션: `Player.tscn`과 `Player.gd`의 visual만 교체
-- 턴/돈/베팅/CPU: 서버 `Room.js`의 authoritative state와 별도 규칙 모듈 추가
-- reconnect: 현재 `reconnect_token` 응답 필드와 connection context에 token 복구 처리 추가
-- spectator: Room 참가 역할과 읽기 전용 클라이언트 타입 추가
-- binary protocol: `Protocol.gd`와 `protocol.js`의 codec만 교체
-- 주사위 물리: Node 서버를 Godot Headless 시뮬레이터로 교체하거나 별도 simulation adapter를 붙이고, `PLAYER_STATE`와 같은 방식으로 dice transform/velocity snapshot을 전송
+## 에셋
 
-주사위 확장 시 클라이언트는 `DiceVisual`이 timestamp가 있는 snapshot buffer를 소비하게 하고, 서버만 `RigidBody3D`를 실제 계산합니다. 네트워크 transport와 Room API는 그대로 유지할 수 있습니다.
-
-## Font license
-
-`client/assets/fonts/NotoSansKR-Variable.ttf` is Noto Sans KR from Google Fonts and is distributed under the SIL Open Font License 1.1. The license text is included at `client/assets/fonts/OFL.txt`.
-# boardgame
-# boardgame
+한글 폰트 라이선스와 사운드 구현은 [THIRD_PARTY_ASSETS.md](THIRD_PARTY_ASSETS.md)에 기록했습니다. SFX는 외부 파일을 내려받지 않고 런타임에서 합성하므로 추가 저작권 파일이 없습니다.
