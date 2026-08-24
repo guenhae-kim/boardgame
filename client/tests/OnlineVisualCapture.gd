@@ -19,7 +19,8 @@ func _capture() -> void:
 	var rules := CamelGameRules.new(["그내", "친구", "CPU 1", "CPU 2"], 1234)
 	for index in roster.size():
 		var player := rules.state.players[index] as Dictionary; player["id"] = roster[index]["player_id"]; player["is_cpu"] = roster[index]["is_cpu"]
-	online._on_game_update({"room_code": "K7DF", "game_sequence": 1, "actor_id": "", "events": [], "public_state": CamelGameProjection.public_state(rules.state), "private_state": CamelGameProjection.private_states(rules.state)["player_1"], "authority_state": rules.state.to_dict(), "game_busy": false})
+	var server_time := int(Time.get_unix_time_from_system() * 1000.0)
+	online._on_game_update({"room_code": "K7DF", "game_sequence": 1, "actor_id": "", "events": [], "public_state": CamelGameProjection.public_state(rules.state), "private_state": CamelGameProjection.private_states(rules.state)["player_1"], "authority_state": rules.state.to_dict(), "game_busy": false, "server_time": server_time, "turn_deadline_ms": server_time + 43000})
 	await online.camera_director.show_board(0.0)
 	await create_timer(1.5).timeout
 	var image := root.get_viewport().get_texture().get_image()

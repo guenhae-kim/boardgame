@@ -12,16 +12,17 @@ func setup(target_camera: Camera3D) -> void:
 
 
 func show_board(duration: float = 0.55) -> void:
-	camera.fov = 72.0 if _is_portrait() else 88.0
+	camera.fov = 60.0 if _is_portrait() else 88.0
 	var pose := _board_pose()
 	await _move_to(pose[0], pose[1], duration)
 
 
 func _board_pose() -> Array:
 	if _is_portrait():
-		# Portrait UI occupies the top/bottom edges. Aim toward the near half of
-		# the table so the board is framed in the large playable middle area.
-		return [Vector3(0, 13.8, 6.5), Vector3(0, 0, 1.5)]
+		# A slight diagonal top-down view turns the wide tabletop footprint into
+		# an almost square silhouette, using the tall mobile play area without
+		# cropping the prediction and betting zones at either side.
+		return [Vector3(3.0, 18.0, 3.0), Vector3(0, 0, 0.3)]
 	return [Vector3(0, 12.2, 14.2), Vector3(0, 0, -0.35)]
 
 
@@ -29,7 +30,7 @@ func _apply_board_pose() -> void:
 	if camera == null:
 		return
 	var pose := _board_pose()
-	camera.fov = 72.0 if _is_portrait() else 88.0
+	camera.fov = 60.0 if _is_portrait() else 88.0
 	camera.global_transform = Transform3D(Basis.IDENTITY, pose[0]).looking_at(pose[1], Vector3.UP)
 
 

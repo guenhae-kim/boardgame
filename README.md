@@ -13,6 +13,7 @@ Godot 4.7/GDScript로 만든 3D 동물 경주 보드게임과 Node.js WebSocket 
 5. 모든 접속자가 받은 `GameEvent` 연출을 끝내고 `GAME_READY`를 보낸 뒤에만 서버가 다음 행동을 엽니다.
 6. 자기 턴에는 손패 카드→예측 구역, 관중 타일→트랙 칸, 구간 베팅→3D 카드 더미처럼 보드를 직접 누릅니다.
 7. CPU도 사람과 같은 `Action → GameRules` 경로를 사용합니다.
+8. Human 턴은 서버가 관리하는 60초 deadline을 가지며, 만료되면 모든 합법 Action 중 하나가 같은 규칙 경로로 자동 실행됩니다.
 
 ## 구조
 
@@ -61,7 +62,7 @@ Node Room: authority_state + public_state + private_states[player_id]
 - `private_state`: 해당 플레이어 자신의 `final_cards`만 포함
 - 다른 플레이어의 비밀 예측 내용은 서버 패킷 자체에 포함되지 않습니다.
 
-현재 버전은 **Host-authoritative**입니다. Host가 짧게 끊기면 reconnect token으로 복구되고 게임은 기다립니다. Host migration은 다음 서버-authoritative 이관 단계의 범위입니다.
+현재 버전은 **Host-authoritative rules + Node room authority**입니다. Node가 player ownership, action lock, turn deadline과 client별 state routing을 검증합니다. Host가 끊기면 연결 중인 다음 Human으로 authority가 이동하고, 일반 플레이어는 reconnect token으로 같은 slot/hand를 복구합니다.
 
 ## 새 온라인 메시지
 
@@ -69,6 +70,7 @@ Node Room: authority_state + public_state + private_states[player_id]
 
 - 로비: `RECONNECT`, `LOBBY_STATE`, `LOBBY_CPU`, `START_GAME`
 - 권위 게임: `GAME_AUTHORITY_REQUEST`, `GAME_ACTION`, `GAME_ACTION_REQUEST`, `GAME_COMMIT`, `GAME_UPDATE`
+- 시간 초과: `GAME_TIMEOUT_REQUEST` (Node deadline 만료 → 현재 authority가 완전한 legal Action 생성)
 - 연출 장벽: `GAME_READY`, `GAME_UNLOCK`
 - 채팅: `CHAT_SEND`, `CHAT_MESSAGE`
 
@@ -90,6 +92,7 @@ npm start
 ./scripts/verify.sh
 godot --headless --path client --script res://tests/OnlineNetworkE2E.gd
 godot --headless --path client --script res://tests/OnlineNetworkE2E.gd -- --server-url=wss://godot-boardgame-prototype.onrender.com/ws
+./scripts/verify_full_online.sh
 ```
 
 검증 범위:
@@ -98,8 +101,9 @@ godot --headless --path client --script res://tests/OnlineNetworkE2E.gd -- --ser
 - 3D Flow: 이벤트 큐가 끝난 뒤에만 다음 턴
 - Dice Safety: 여섯 색, 약/강 투척 모두 트레이 내부 유지
 - Online UI: 손패, 내 턴 잠금, prediction/track 직접 대상
-- Node 통합: Room 격리, Host/CPU, private routing, action order, reconnect
+- Node 통합: Room 격리, Host/CPU, private routing, action order, ownership spoof reject, server timeout, reconnect, host migration
 - 실제 Godot+Node E2E: 두 WebSocket 클라이언트가 동일 sequence의 주사위/이동 Event 수신
+- Full Online E2E: Human 2 + CPU 2, 첫 Human timeout, private hand, ownership, reconnect를 포함해 GAME_OVER까지 완주
 
 테스트 종료 때 표시되는 dummy-renderer RID 경고는 강제 종료형 headless Scene 테스트의 정리 경고이며 assertion 실패가 아닙니다.
 

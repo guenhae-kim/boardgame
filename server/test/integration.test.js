@@ -218,3 +218,90 @@ test("four human clients occupy four stable slots without CPU fill", async () =>
   for (const client of clients) client.socket.close();
   await server.close();
 });
+
+test("server-owned turn deadline rejects ownership spoofing and requests timeout action", async () => {
+  const server = createGameServer({ turnDurationMs: 140 });
+  await new Promise((resolve) => server.httpServer.listen(0, "127.0.0.1", resolve));
+  const { port } = server.httpServer.address();
+  const url = `ws://127.0.0.1:${port}/ws`;
+  const host = await connect(url);
+  const guest = await connect(url);
+  host.socket.send(encode(MessageType.CREATE_ROOM, { nickname: "A" }));
+  const created = await host.next(MessageType.ROOM_CREATED);
+  guest.socket.send(encode(MessageType.JOIN_ROOM, { nickname: "B", room_code: created.payload.room_code }));
+  const joined = await guest.next(MessageType.ROOM_JOINED);
+  host.socket.send(encode(MessageType.START_GAME, { fill_cpu: true }));
+  const authority = await host.next(MessageType.GAME_AUTHORITY_REQUEST);
+  const players = authority.payload.players.map((player) => ({
+    id: player.player_id, name: player.nickname, is_cpu: player.is_cpu, money: 3,
+  }));
+  const publicState = { players, current_player_index: 1, phase: "PLAYING" };
+  const privateStates = Object.fromEntries(players.map((player) => [player.id, { final_cards: ["red"] }]));
+  host.socket.send(encode(MessageType.GAME_COMMIT, {
+    actor_id: "", events: [], public_state: publicState,
+    private_states: privateStates, authority_state: publicState,
+  }));
+  await host.next(MessageType.GAME_UPDATE);
+  await guest.next(MessageType.GAME_UPDATE);
+  host.socket.send(encode(MessageType.GAME_READY, { game_sequence: 1 }));
+  guest.socket.send(encode(MessageType.GAME_READY, { game_sequence: 1 }));
+  const unlocked = await guest.next(MessageType.GAME_UNLOCK);
+  await host.next(MessageType.GAME_UNLOCK);
+  assert.ok(unlocked.payload.turn_deadline_ms > unlocked.payload.server_time);
+
+  guest.socket.send(encode(MessageType.GAME_ACTION, {
+    request_id: "spoof", action: { type: "ROLL_DIE", player_id: created.payload.player_id, data: {} },
+  }));
+  const ownershipError = await guest.next(MessageType.ERROR);
+  assert.equal(ownershipError.payload.code, "PLAYER_OWNERSHIP_MISMATCH");
+
+  const timeout = await host.next(MessageType.GAME_TIMEOUT_REQUEST, 1500);
+  assert.equal(timeout.payload.actor_id, joined.payload.player_id);
+  const advanced = { ...publicState, current_player_index: 2 };
+  host.socket.send(encode(MessageType.GAME_COMMIT, {
+    actor_id: joined.payload.player_id,
+    events: [{ type: "TURN_TIMED_OUT", data: { player_id: joined.payload.player_id } }],
+    public_state: advanced, private_states: privateStates, authority_state: advanced,
+  }));
+  const afterTimeout = await guest.next(MessageType.GAME_UPDATE);
+  assert.equal(afterTimeout.payload.events[0].type, "TURN_TIMED_OUT");
+  assert.equal(afterTimeout.payload.public_state.current_player_index, 2);
+  host.socket.close();
+  guest.socket.close();
+  await server.close();
+});
+
+test("connected human receives host authority after the host disconnects", async () => {
+  const server = createGameServer();
+  await new Promise((resolve) => server.httpServer.listen(0, "127.0.0.1", resolve));
+  const { port } = server.httpServer.address();
+  const url = `ws://127.0.0.1:${port}/ws`;
+  const host = await connect(url);
+  const guest = await connect(url);
+  host.socket.send(encode(MessageType.CREATE_ROOM, { nickname: "Host" }));
+  const created = await host.next(MessageType.ROOM_CREATED);
+  guest.socket.send(encode(MessageType.JOIN_ROOM, { nickname: "Next Host", room_code: created.payload.room_code }));
+  const joined = await guest.next(MessageType.ROOM_JOINED);
+  host.socket.send(encode(MessageType.START_GAME, { fill_cpu: true }));
+  const request = await host.next(MessageType.GAME_AUTHORITY_REQUEST);
+  const players = request.payload.players.map((player) => ({ id: player.player_id, name: player.nickname, is_cpu: player.is_cpu }));
+  const state = { players, current_player_index: 1, phase: "PLAYING" };
+  const privateStates = Object.fromEntries(players.map((player) => [player.id, { final_cards: ["blue"] }]));
+  host.socket.send(encode(MessageType.GAME_COMMIT, {
+    actor_id: "", events: [], public_state: state, private_states: privateStates, authority_state: state,
+  }));
+  await host.next(MessageType.GAME_UPDATE);
+  await guest.next(MessageType.GAME_UPDATE);
+  host.socket.close();
+  let lobby;
+  for (let index = 0; index < 6; index += 1) {
+    lobby = await guest.next(MessageType.LOBBY_STATE);
+    if (lobby.payload.host_player_id === joined.payload.player_id) break;
+  }
+  assert.equal(lobby.payload.host_player_id, joined.payload.player_id);
+  const migration = await guest.next(MessageType.GAME_AUTHORITY_REQUEST);
+  assert.equal(migration.payload.reason, "host_migration");
+  assert.deepEqual(migration.payload.authority_state, state);
+  guest.socket.close();
+  await server.close();
+});

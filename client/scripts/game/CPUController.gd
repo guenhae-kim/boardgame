@@ -7,10 +7,7 @@ func _init() -> void:
 	_rng.randomize()
 
 func choose_action(rules: CamelGameRules, player_id: String) -> CamelAction:
-	var legal := rules.available_actions(player_id)
-	var spectator := _spectator_action(rules, player_id)
-	if spectator != null:
-		legal.append(spectator)
+	var legal := legal_actions(rules, player_id)
 	if legal.is_empty():
 		return CamelAction.new()
 	for action in legal:
@@ -22,6 +19,21 @@ func choose_action(rules: CamelGameRules, player_id: String) -> CamelAction:
 		if candidate.type == CamelAction.TAKE_LEG_BET and str(candidate.data.get("camel", "")) == str(order[0]):
 			return candidate
 	return legal[_rng.randi_range(0, legal.size() - 1)] as CamelAction
+
+func choose_random_legal_action(rules: CamelGameRules, player_id: String) -> CamelAction:
+	var legal := legal_actions(rules, player_id)
+	if legal.is_empty():
+		return CamelAction.new()
+	return legal[_rng.randi_range(0, legal.size() - 1)] as CamelAction
+
+func legal_actions(rules: CamelGameRules, player_id: String) -> Array:
+	var legal := rules.available_actions(player_id)
+	for space in range(2, CamelGameState.TRACK_LENGTH + 1):
+		for side in ["oasis", "mirage"]:
+			var action := CamelAction.new(CamelAction.PLACE_SPECTATOR, {"space": space, "side": side})
+			if rules.validate_action(player_id, action).is_empty():
+				legal.append(action)
+	return legal
 
 func _spectator_action(rules: CamelGameRules, player_id: String) -> CamelAction:
 	var spaces: Array[int] = []

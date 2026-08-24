@@ -4,9 +4,10 @@ import { Room } from "./Room.js";
 const ROOM_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 export class RoomManager {
-  constructor({ maxPlayers = 8 } = {}) {
+  constructor({ maxPlayers = 8, turnDurationMs = 60_000 } = {}) {
     this.rooms = new Map();
     this.maxPlayers = maxPlayers;
+    this.turnDurationMs = turnDurationMs;
   }
 
   createRoom() {
@@ -15,7 +16,7 @@ export class RoomManager {
       code = Array.from({ length: 4 }, () => ROOM_ALPHABET[randomInt(ROOM_ALPHABET.length)]).join("");
     } while (this.rooms.has(code));
 
-    const room = new Room(code, this.maxPlayers);
+    const room = new Room(code, this.maxPlayers, { turnDurationMs: this.turnDurationMs });
     this.rooms.set(code, room);
     return room;
   }

@@ -11,6 +11,7 @@ var _last_game_sequence := 0
 var _update_queue: Array = []
 var _processing_updates := false
 var _cpu_pending := false
+var _turn_unlocked := false
 var _cpu_controller := CamelCPUController.new()
 var _network: Node
 
@@ -27,6 +28,7 @@ func _ready() -> void:
 	_network.connect("game_action_requested", _on_action_request)
 	_network.connect("game_update", _on_game_update)
 	_network.connect("game_unlocked", _on_game_unlocked)
+	_network.connect("game_timeout_requested", _on_timeout_request)
 	_network.connect("chat_message", _on_chat_message)
 	_network.connect("server_error", _on_server_error)
 	board.board_target_pressed.connect(online_ui.handle_board_target)
@@ -62,6 +64,13 @@ func _on_lobby_state(payload: Dictionary) -> void:
 
 func _on_authority_request(payload: Dictionary) -> void:
 	if local_player_id != host_player_id and host_player_id != "": return
+	if str(payload.get("reason", "")) == "host_migration" and payload.has("authority_state"):
+		rules = CamelGameRules.new()
+		rules.load_state(CamelGameState.from_dict(payload.get("authority_state", {}) as Dictionary))
+		var current := rules.state.current_player()
+		if _turn_unlocked and bool(current.get("is_cpu", false)) and rules.state.phase == "PLAYING":
+			_schedule_cpu(str(current.get("id", "")))
+		return
 	var roster := payload.get("players", []) as Array
 	var names: Array = []
 	for player in roster: names.append(str((player as Dictionary).get("nickname", "Player")))
@@ -91,6 +100,13 @@ func _commit(events: Array, actor_id: String) -> void:
 	})
 
 func _request_action(action: CamelAction) -> void:
+	if not _turn_unlocked or rules == null or rules.state.phase != "PLAYING":
+		return
+	if str(rules.state.current_player().get("id", "")) != local_player_id:
+		return
+	if not rules.validate_action(local_player_id, action).is_empty():
+		return
+	_turn_unlocked = false
 	_network.send_game_action(action.to_dict(), "%s-%d" % [local_player_id, Time.get_ticks_msec()])
 
 func _on_game_update(payload: Dictionary) -> void:
@@ -105,6 +121,8 @@ func _drain_updates() -> void:
 	_processing_updates = true
 	while not _update_queue.is_empty():
 		var payload := _update_queue.pop_front() as Dictionary
+		_turn_unlocked = false
+		online_ui.set_turn_deadline(0, int(payload.get("server_time", 0)), false)
 		private_state = payload.get("private_state", {}) as Dictionary
 		var incoming: CamelGameState
 		if local_player_id == host_player_id and payload.has("authority_state"):
@@ -126,14 +144,19 @@ func _drain_updates() -> void:
 		board.sync_state(rules.state)
 		var current := rules.state.current_player(); var current_id := str(current["id"])
 		var game_busy := bool(payload.get("game_busy", true))
+		_turn_unlocked = not game_busy and rules.state.phase == "PLAYING"
 		var can_act := current_id == local_player_id and not bool(current.get("is_cpu", false)) and rules.state.phase == "PLAYING" and not game_busy
 		_acting_player_id = current_id; _acting_player_name = str(current["name"]); online_ui.set_presented_player(current_id)
 		_set_phase(FlowPhase.WAITING_FOR_ACTION if rules.state.phase == "PLAYING" else FlowPhase.GAME_END, "내 차례입니다. 행동을 선택하세요." if can_act else "%s가 행동 중입니다." % _acting_player_name, can_act)
 		online_ui.set_online_context(rules.state, private_state, local_player_id, can_act)
+		if not game_busy:
+			online_ui.set_turn_deadline(int(payload.get("turn_deadline_ms", 0)), int(payload.get("server_time", 0)), can_act)
 		dice.gesture_enabled = can_act
 		if can_act: _on_interaction_mode("", [])
 		if game_busy:
 			_network.send_game_ready(int(payload.get("game_sequence", 0)))
+		elif local_player_id == host_player_id and bool(current.get("is_cpu", false)) and rules.state.phase == "PLAYING":
+			_schedule_cpu(current_id)
 	_processing_updates = false
 
 func _on_game_unlocked(payload: Dictionary) -> void:
@@ -142,15 +165,31 @@ func _on_game_unlocked(payload: Dictionary) -> void:
 	var current := rules.state.current_player()
 	var current_id := str(current.get("id", ""))
 	var can_act := current_id == local_player_id and not bool(current.get("is_cpu", false)) and rules.state.phase == "PLAYING"
+	_turn_unlocked = rules.state.phase == "PLAYING"
 	_acting_player_id = current_id
 	_acting_player_name = str(current.get("name", current_id))
 	_set_phase(FlowPhase.WAITING_FOR_ACTION if rules.state.phase == "PLAYING" else FlowPhase.GAME_END, "내 차례입니다. 행동을 선택하세요." if can_act else "%s가 행동 중입니다." % _acting_player_name, can_act)
 	online_ui.set_online_context(rules.state, private_state, local_player_id, can_act)
+	online_ui.set_turn_deadline(int(payload.get("turn_deadline_ms", 0)), int(payload.get("server_time", 0)), can_act)
 	dice.gesture_enabled = can_act
 	if can_act:
 		_on_interaction_mode("", [])
 	if local_player_id == host_player_id and bool(current.get("is_cpu", false)) and rules.state.phase == "PLAYING":
 		_schedule_cpu(current_id)
+
+func _on_timeout_request(payload: Dictionary) -> void:
+	if local_player_id != host_player_id or rules == null or rules.state.phase != "PLAYING":
+		return
+	var actor_id := str(payload.get("actor_id", ""))
+	if str(rules.state.current_player().get("id", "")) != actor_id:
+		return
+	var action := _cpu_controller.choose_random_legal_action(rules, actor_id)
+	var result := rules.apply_action(actor_id, action)
+	if not bool(result.get("ok", false)):
+		return
+	var events := result.get("events", []) as Array
+	events.push_front(CamelEvent.new(CamelEvent.TURN_TIMED_OUT, {"player_id": actor_id, "action": action.to_dict()}))
+	_commit(events, actor_id)
 
 func _play_event(event: CamelEvent) -> void:
 	if event.type == CamelEvent.DIE_ROLLED:
@@ -160,6 +199,11 @@ func _play_event(event: CamelEvent) -> void:
 	if event.type == "ACTION_REJECTED":
 		if str(event.data.get("player_id", "")) == local_player_id: online_ui.show_error(str(event.data.get("error", "행동할 수 없습니다.")))
 		await get_tree().create_timer(0.15).timeout; return
+	if event.type == CamelEvent.TURN_TIMED_OUT:
+		_set_phase(FlowPhase.RESOLVING_ACTION, "시간 초과! 자동으로 행동했습니다.", false)
+		sound_manager.play("timer_warning")
+		await get_tree().create_timer(0.45).timeout
+		return
 	await super._play_event(event)
 
 func _schedule_cpu(cpu_id: String) -> void:
@@ -202,6 +246,6 @@ func _on_server_error(code: String, message: String) -> void:
 	online_ui.show_error("%s: %s" % [code, message])
 	if rules != null and rules.state.phase == "PLAYING":
 		var current := rules.state.current_player()
-		var can_retry := str(current.get("id", "")) == local_player_id and not bool(current.get("is_cpu", false))
+		var can_retry := _turn_unlocked and str(current.get("id", "")) == local_player_id and not bool(current.get("is_cpu", false))
 		online_ui.set_online_context(rules.state, private_state, local_player_id, can_retry)
 		dice.gesture_enabled = can_retry

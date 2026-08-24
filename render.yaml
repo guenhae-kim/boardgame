@@ -11,3 +11,5 @@ services:
         value: production
       - key: MAX_ROOM_PLAYERS
         value: "4"
+      - key: TURN_DURATION_MS
+        value: "60000"

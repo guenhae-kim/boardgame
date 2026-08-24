@@ -31,6 +31,13 @@ var _chat_input: LineEdit
 var _chat_lines: Array[String] = []
 var _unread := 0
 var _turn_box: VBoxContainer
+var _timer_label: Label
+var _turn_deadline_ms := 0
+var _server_clock_offset_ms := 0
+var _timer_is_mine := false
+var _last_warning_second := -1
+var _result_panel: PanelContainer
+var _result_label: Label
 
 func _build_top_hud() -> void:
 	_top_panel = PanelContainer.new()
@@ -53,6 +60,11 @@ func _build_top_hud() -> void:
 	turn_label.add_theme_font_size_override("font_size", 23)
 	turn_label.modulate = Color("ffd778")
 	_turn_box.add_child(turn_label)
+	_timer_label = Label.new()
+	_timer_label.add_theme_font_size_override("font_size", 18)
+	_timer_label.modulate = Color("dce8e6")
+	_timer_label.visible = false
+	_turn_box.add_child(_timer_label)
 	order_label = Label.new()
 	order_label.add_theme_font_size_override("font_size", 13)
 	_turn_box.add_child(order_label)
@@ -75,6 +87,29 @@ func _build_top_hud() -> void:
 	content.add_child(_chat_badge)
 	players_label = Label.new()
 	players_label.visible = false
+	_build_result_panel()
+
+func _process(_delta: float) -> void:
+	if _turn_deadline_ms <= 0 or _timer_label == null:
+		return
+	var now_ms := int(Time.get_unix_time_from_system() * 1000.0) + _server_clock_offset_ms
+	var seconds := maxi(0, int(ceil(float(_turn_deadline_ms - now_ms) / 1000.0)))
+	_timer_label.text = "%02d:%02d" % [seconds / 60, seconds % 60]
+	_timer_label.modulate = Color("ff6f61") if seconds <= 10 else Color("f2c66d") if seconds <= 30 else Color("dce8e6")
+	if _timer_is_mine and seconds <= 10 and seconds > 0 and seconds != _last_warning_second:
+		_last_warning_second = seconds
+		sound_requested.emit("timer_warning")
+
+func set_turn_deadline(deadline_ms: int, server_time_ms: int, is_mine: bool) -> void:
+	_turn_deadline_ms = deadline_ms
+	_server_clock_offset_ms = server_time_ms - int(Time.get_unix_time_from_system() * 1000.0) if server_time_ms > 0 else 0
+	_timer_is_mine = is_mine
+	_last_warning_second = -1
+	_timer_label.visible = deadline_ms > 0
+
+func set_flow_state(phase_name: String, player_name: String, description: String, input_enabled: bool) -> void:
+	super.set_flow_state(phase_name, player_name, description, input_enabled)
+	turn_label.text = "내 차례!" if input_enabled else "%s의 차례" % player_name
 
 func _build_action_bar() -> void:
 	_action_panel = PanelContainer.new()
@@ -152,7 +187,7 @@ func refresh_state(rules: CamelGameRules) -> void:
 		money.text = "%s 코인 %d" % ["CPU ·" if bool(player.get("is_cpu", false)) else "", int(player["money"])]
 		var card_labels := card.find_children("*", "Label", true, false)
 		if not card_labels.is_empty():
-			(card_labels[0] as Label).text = "%s● %s" % ["CPU " if bool(player.get("is_cpu", false)) else "", str(player.get("name", player_id))]
+			(card_labels[0] as Label).text = "%s%s● %s" % ["나 · " if player_id == _local_player_id else "", "CPU " if bool(player.get("is_cpu", false)) else "", str(player.get("name", player_id))]
 			(card_labels[0] as Label).add_theme_font_size_override("font_size", int((13 if portrait else 15) * display_scale))
 		money.add_theme_font_size_override("font_size", int((16 if portrait else 18) * display_scale))
 		card.custom_minimum_size = (Vector2(88, 48) if portrait else Vector2(112, 58)) * display_scale
@@ -170,6 +205,7 @@ func set_online_context(state: CamelGameState, private_state: Dictionary, local_
 	_tile_button.disabled = not can_act
 	if not can_act:
 		cancel_selection()
+	_show_result(state)
 
 func handle_board_target(target_type: String, target_id: String) -> void:
 	if not _can_act or target_type != _interaction_mode:
@@ -278,6 +314,33 @@ func _build_chat_panel() -> void:
 	_chat_input.text_submitted.connect(func(_text: String): _send_chat())
 	_root.add_child(_chat_panel)
 
+func _build_result_panel() -> void:
+	_result_panel = PanelContainer.new()
+	_result_panel.visible = false
+	_result_panel.set_anchors_preset(Control.PRESET_CENTER)
+	_result_panel.position = Vector2(-190, -220)
+	_result_panel.size = Vector2(380, 440)
+	_result_panel.add_theme_stylebox_override("panel", _panel_style(Color("fff4d8"), 0.98, Color("f2c66d"), 4, 24))
+	var margin := MarginContainer.new(); margin.add_theme_constant_override("margin_left", 24); margin.add_theme_constant_override("margin_right", 24); margin.add_theme_constant_override("margin_top", 22); margin.add_theme_constant_override("margin_bottom", 22); _result_panel.add_child(margin)
+	var box := VBoxContainer.new(); box.add_theme_constant_override("separation", 16); margin.add_child(box)
+	var title := Label.new(); title.text = "경주 종료!"; title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; title.add_theme_font_size_override("font_size", 32); title.modulate = Color("bf704c"); box.add_child(title)
+	_result_label = Label.new(); _result_label.add_theme_font_size_override("font_size", 21); _result_label.modulate = Color("4b3528"); _result_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; box.add_child(_result_label)
+	_root.add_child(_result_panel)
+
+func _show_result(state: CamelGameState) -> void:
+	if _result_panel == null:
+		return
+	_result_panel.visible = state.phase == "GAME_OVER"
+	if not _result_panel.visible:
+		return
+	var standings := state.players.duplicate(true)
+	standings.sort_custom(func(a: Dictionary, b: Dictionary): return int(a.get("money", 0)) > int(b.get("money", 0)))
+	var lines: Array[String] = []
+	for index in standings.size():
+		var player := standings[index] as Dictionary
+		lines.append("%d위  %s%s   코인 %d" % [index + 1, "CPU · " if bool(player.get("is_cpu", false)) else "", str(player.get("name", "Player")), int(player.get("money", 0))])
+	_result_label.text = "\n\n".join(lines)
+
 func _toggle_chat() -> void:
 	_chat_panel.visible = not _chat_panel.visible
 	if _chat_panel.visible:
@@ -312,6 +375,7 @@ func _apply_responsive_layout() -> void:
 		turn_label.add_theme_font_size_override("font_size", int((30 if portrait else 23) * display_scale))
 		order_label.add_theme_font_size_override("font_size", int((16 if portrait else 13) * display_scale))
 		phase_label.add_theme_font_size_override("font_size", int((13 if portrait else 11) * display_scale))
+		_timer_label.add_theme_font_size_override("font_size", int((18 if portrait else 16) * display_scale))
 		_hand_title.add_theme_font_size_override("font_size", int((12 if portrait else 14) * display_scale))
 	for button in [_roll_button, _bet_button, _tile_button, _cancel_button]:
 		if button != null:

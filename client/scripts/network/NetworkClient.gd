@@ -11,6 +11,7 @@ signal game_authority_requested(payload: Dictionary)
 signal game_action_requested(payload: Dictionary)
 signal game_update(payload: Dictionary)
 signal game_unlocked(payload: Dictionary)
+signal game_timeout_requested(payload: Dictionary)
 signal chat_message(payload: Dictionary)
 signal server_error(code: String, message: String)
 
@@ -143,6 +144,8 @@ func _handle_packet(text: String) -> void:
 			game_update.emit(payload)
 		Protocol.GAME_UNLOCK:
 			game_unlocked.emit(payload)
+		Protocol.GAME_TIMEOUT_REQUEST:
+			game_timeout_requested.emit(payload)
 		Protocol.CHAT_MESSAGE:
 			chat_message.emit(payload)
 		Protocol.PING:

@@ -60,7 +60,7 @@ func play_roll(die_id: String, forced_result: int = 0, throw_strength: float = 1
 
 	var elapsed := 0.0
 	var stable := 0.0
-	while elapsed < 2.25 and stable < 0.24:
+	while elapsed < 1.05 and stable < 0.14:
 		await get_tree().physics_frame
 		var delta := 1.0 / float(Engine.physics_ticks_per_second)
 		elapsed += delta
@@ -78,7 +78,7 @@ func play_roll(die_id: String, forced_result: int = 0, throw_strength: float = 1
 	if forced_result in [1, 2, 3]:
 		result = forced_result
 		_orient_top(result)
-	await get_tree().create_timer(0.45).timeout
+	await get_tree().create_timer(0.16).timeout
 	return result
 
 
@@ -236,15 +236,15 @@ func _release_from_pyramid(throw_strength: float) -> void:
 	_hatch.scale.x = 1.0
 	_pyramid.scale = Vector3.ONE
 	var amplitude := 0.07 + (throw_strength - 1.0) * 0.055
-	var step_time := 0.1 / sqrt(throw_strength)
+	var step_time := 0.055 / sqrt(throw_strength)
 	var shake := create_tween()
 	shake.tween_property(_pyramid, "rotation:z", amplitude, step_time)
 	shake.tween_property(_pyramid, "rotation:z", -amplitude, step_time)
 	shake.tween_property(_pyramid, "rotation:x", amplitude * 0.8, step_time)
-	shake.tween_property(_pyramid, "rotation", Vector3.ZERO, 0.12)
+	shake.tween_property(_pyramid, "rotation", Vector3.ZERO, 0.06)
 	await shake.finished
 	var open := create_tween()
-	open.tween_property(_hatch, "scale:x", 0.05, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+	open.tween_property(_hatch, "scale:x", 0.05, 0.08).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
 	await open.finished
 
 
@@ -352,8 +352,8 @@ func _build_die() -> void:
 	physics_material.friction = 0.48
 	die.physics_material_override = physics_material
 	die.gravity_scale = 1.45
-	die.linear_damp = 1.35
-	die.angular_damp = 1.75
+	die.linear_damp = 2.15
+	die.angular_damp = 2.65
 	die.contact_monitor = true
 	die.max_contacts_reported = 8
 	die.body_entered.connect(_on_die_body_entered)

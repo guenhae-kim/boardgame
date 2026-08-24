@@ -16,7 +16,7 @@ function currentPlayerId(publicState) {
 }
 
 export class Room {
-  constructor(code, maxPlayers) {
+  constructor(code, maxPlayers, { turnDurationMs = 60_000 } = {}) {
     this.code = code;
     this.maxPlayers = Math.min(maxPlayers, 4);
     this.players = new Map();
@@ -32,6 +32,8 @@ export class Room {
     this.publicState = null;
     this.privateStates = {};
     this.authorityState = null;
+    this.turnDurationMs = Math.max(100, Number(turnDurationMs) || 60_000);
+    this.turnDeadlineMs = 0;
   }
 
   addPlayer(socket, nickname) {
@@ -75,7 +77,29 @@ export class Room {
     player.disconnectedAt = now;
     this.pendingReadyPlayers.delete(playerId);
     this.tryUnlockGame();
+    if (this.started && playerId === this.hostPlayerId) this.migrateHost();
     return player;
+  }
+
+  migrateHost() {
+    const nextHost = [...this.players.values()].find((candidate) => !candidate.isCpu && candidate.connected);
+    if (!nextHost || nextHost.id === this.hostPlayerId) return;
+    this.hostPlayerId = nextHost.id;
+    this.broadcastLobby();
+    this.sendTo(nextHost.id, MessageType.GAME_AUTHORITY_REQUEST, {
+      room_code: this.code,
+      players: this.publicPlayers(),
+      reason: "host_migration",
+      authority_state: this.authorityState,
+    });
+    if (this.pendingAction) {
+      this.sendTo(nextHost.id, this.pendingAction.automatic ? MessageType.GAME_TIMEOUT_REQUEST : MessageType.GAME_ACTION_REQUEST, {
+        actor_id: this.pendingAction.playerId,
+        request_id: this.pendingAction.requestId,
+        action: this.pendingAction.action,
+        reason: this.pendingAction.automatic ? "turn_timeout" : "host_migration",
+      });
+    }
   }
 
   expireDisconnected(now = Date.now()) {
@@ -166,8 +190,13 @@ export class Room {
     if (!player || player.isCpu) throw new ProtocolError("INVALID_ACTOR", "Only a connected human can send this action");
     if (currentPlayerId(this.publicState) !== playerId) throw new ProtocolError("NOT_YOUR_TURN", "It is not your turn");
     if (!action || typeof action !== "object") throw new ProtocolError("INVALID_ACTION", "Action is required");
+    const claimedPlayerId = String(action.player_id || action.actor_id || action.data?.player_id || "");
+    if (claimedPlayerId && claimedPlayerId !== playerId) {
+      throw new ProtocolError("PLAYER_OWNERSHIP_MISMATCH", "A client may only submit its own action");
+    }
+    this.turnDeadlineMs = 0;
     this.gameBusy = true;
-    this.pendingAction = { playerId, requestId: String(requestId || randomUUID()) };
+    this.pendingAction = { playerId, requestId: String(requestId || randomUUID()), action, automatic: false };
     this.sendTo(this.hostPlayerId, MessageType.GAME_ACTION_REQUEST, { actor_id: playerId, request_id: this.pendingAction.requestId, action });
   }
 
@@ -211,10 +240,37 @@ export class Room {
     if (!this.started || !this.publicState || !this.gameBusy || this.pendingAction) return;
     if (this.pendingReadyPlayers.size > 0) return;
     this.gameBusy = false;
+    const current = this.players.get(currentPlayerId(this.publicState));
+    this.turnDeadlineMs = current && !current.isCpu && this.publicState?.phase === "PLAYING"
+      ? Date.now() + this.turnDurationMs
+      : 0;
     this.broadcast(MessageType.GAME_UNLOCK, {
       room_code: this.code,
       game_sequence: this.gameSequence,
       current_player_id: currentPlayerId(this.publicState),
+      turn_deadline_ms: this.turnDeadlineMs,
+      server_time: Date.now(),
+    });
+  }
+
+  checkTurnTimeout(now = Date.now()) {
+    if (!this.started || !this.publicState || this.publicState.phase !== "PLAYING") return;
+    if (this.gameBusy || !this.turnDeadlineMs || now < this.turnDeadlineMs) return;
+    const playerId = currentPlayerId(this.publicState);
+    const player = this.players.get(playerId);
+    if (!player || player.isCpu) return;
+    this.turnDeadlineMs = 0;
+    this.gameBusy = true;
+    this.pendingAction = {
+      playerId,
+      requestId: `timeout-${this.gameSequence}-${now}`,
+      action: null,
+      automatic: true,
+    };
+    this.sendTo(this.hostPlayerId, MessageType.GAME_TIMEOUT_REQUEST, {
+      actor_id: playerId,
+      request_id: this.pendingAction.requestId,
+      reason: "turn_timeout",
     });
   }
 
@@ -223,6 +279,7 @@ export class Room {
     const payload = {
       room_code: this.code, game_sequence: this.gameSequence, actor_id: actorId, events,
       public_state: this.publicState, private_state: this.privateStates[player.id] || {}, game_busy: this.gameBusy,
+      turn_deadline_ms: this.turnDeadlineMs, server_time: Date.now(),
     };
     if (player.id === this.hostPlayerId) payload.authority_state = this.authorityState;
     player.socket.send(encode(MessageType.GAME_UPDATE, payload));
@@ -235,6 +292,7 @@ export class Room {
 
   simulate(deltaSeconds) {
     this.expireDisconnected();
+    this.checkTurnTimeout();
     for (const player of this.players.values()) {
       if (player.isCpu) continue;
       player.position.x = clamp(player.position.x + player.direction.x * MOVE_SPEED * deltaSeconds, -WORLD_LIMIT, WORLD_LIMIT);

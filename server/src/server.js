@@ -98,7 +98,10 @@ export function createGameServer(options = {}) {
   const buildVersion = normalizedBuildVersion(
     options.buildVersion || process.env.RENDER_GIT_COMMIT || "devbuild",
   );
-  const roomManager = new RoomManager({ maxPlayers: Number(process.env.MAX_ROOM_PLAYERS) || 8 });
+  const roomManager = new RoomManager({
+    maxPlayers: Number(options.maxPlayers || process.env.MAX_ROOM_PLAYERS) || 8,
+    turnDurationMs: Number(options.turnDurationMs || process.env.TURN_DURATION_MS) || 60_000,
+  });
   const httpServer = http.createServer((req, res) => serveStatic(req, res, staticDir, buildVersion));
   const wsServer = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES });
 
