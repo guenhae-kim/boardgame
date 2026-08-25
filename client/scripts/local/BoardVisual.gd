@@ -59,6 +59,31 @@ func dice_history_position() -> Vector3:
 	return global_position + Vector3(0, 0.3, 2.35)
 
 
+func show_reaction(player_id: String, text: String, state: CamelGameState) -> void:
+	var player_index := 0
+	for index in state.players.size():
+		if str((state.players[index] as Dictionary).get("id", "")) == player_id:
+			player_index = index
+			break
+	var camel_id := str(CamelGameState.RACE_CAMELS[player_index % CamelGameState.RACE_CAMELS.size()])
+	if not piece_visuals.has(camel_id):
+		return
+	var bubble := Label3D.new()
+	bubble.text = text.left(24)
+	bubble.font_size = 54
+	bubble.outline_size = 12
+	bubble.modulate = Color("fff4d8")
+	bubble.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	bubble.position = (piece_visuals[camel_id] as Node3D).position + Vector3(0, 1.65, 0)
+	add_child(bubble)
+	var tween := create_tween()
+	tween.tween_property(bubble, "position:y", bubble.position.y + 0.35, 0.25).set_trans(Tween.TRANS_BACK)
+	tween.tween_interval(2.0)
+	tween.tween_property(bubble, "modulate:a", 0.0, 0.25)
+	await tween.finished
+	bubble.queue_free()
+
+
 func set_interaction(target_type: String = "", valid_ids: Array = []) -> void:
 	_enabled_targets.clear()
 	for target_id in valid_ids:
@@ -204,7 +229,9 @@ func play_reward(piece_id: String = "") -> void:
 
 func track_point(position: int) -> Vector3:
 	var display_position := clampi(position, 1, CamelGameState.TRACK_LENGTH)
-	var angle := -TAU * float(display_position - 1) / float(CamelGameState.TRACK_LENGTH) - PI * 0.5
+	# Track indices grow clockwise on the physical board. GameRules already moves
+	# racing pieces with +1 indices, so the visual marker order must match it.
+	var angle := TAU * float(display_position - 1) / float(CamelGameState.TRACK_LENGTH) - PI * 0.5
 	var point := Vector3(cos(angle) * 6.7, 0, sin(angle) * 4.5)
 	if position > CamelGameState.TRACK_LENGTH:
 		point += Vector3(0.9 * (position - CamelGameState.TRACK_LENGTH), 0, 0)

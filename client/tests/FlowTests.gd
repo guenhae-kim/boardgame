@@ -14,6 +14,7 @@ func _run() -> void:
 	for unused in 8:
 		await process_frame
 	await create_timer(1.5).timeout
+	_check(flow.board.track_point(2).x > flow.board.track_point(1).x, "track indices increase clockwise from the start marker")
 	_check(flow.phase == CamelGameFlowController.FlowPhase.WAITING_FOR_ACTION, "game reaches WAITING_FOR_ACTION")
 	_check(not flow.ui._action_controls[0].disabled, "current player input is enabled")
 	flow._prepare_stack_demo()
@@ -31,6 +32,7 @@ func _run() -> void:
 	_check((flow.board._bet_card_nodes["blue"] as Array).size() == 3, "3D bet pile mirrors the remaining GameState cards")
 	_check(str(flow.rules.state.current_player()["id"]) != second_actor, "non-dice rule action uses the same locked turn flow")
 	_check(flow.phase == CamelGameFlowController.FlowPhase.WAITING_FOR_ACTION, "non-dice event queue also reopens input after completion")
+	_check(flow.camera_director.state == CamelCameraDirector.CameraState.BOARD_OVERVIEW, "camera returns to overview before next turn input")
 	var gesture_actor := str(flow.rules.state.current_player()["id"])
 	var pyramid_screen_position := flow._camera.unproject_position(flow.dice.global_position + Vector3(0, 4.25, 0))
 	_check(flow.dice._screen_hits_pyramid(pyramid_screen_position), "screen ray selects the pyramid interaction area")

@@ -215,6 +215,8 @@ func _play_event(event: CamelEvent) -> void:
 			_set_phase(FlowPhase.PLAYING_EFFECT_ANIMATION, "%s 구간 베팅 카드 %d를 가져갑니다." % [event.data["camel"], event.data["value"]], false)
 			await camera_director.focus_component(board.bet_stack_position(str(event.data["camel"])))
 			await board.play_take_bet(event.data)
+			if ui.has_method("play_ticket_gain"):
+				await ui.play_ticket_gain(str(event.data.get("player_id", "")), str(event.data.get("camel", "")), int(event.data.get("value", 0)))
 		CamelEvent.FINAL_BET_PLACED:
 			var bet_type := str(event.data["bet"])
 			_set_phase(FlowPhase.PLAYING_EFFECT_ANIMATION, "최종 %s 예측 카드를 비공개로 제출합니다." % ("1등" if bet_type == "winner" else "꼴등"), false)
@@ -231,7 +233,11 @@ func _play_event(event: CamelEvent) -> void:
 		CamelEvent.TURN_ENDED:
 			await _place_pending_die_history()
 			_set_phase(FlowPhase.TURN_END, "%s의 행동과 모든 연출이 끝났습니다." % _acting_player_name, false)
-			await get_tree().create_timer(0.35).timeout
+			# Online clients acknowledge GAME_READY only after this event queue is
+			# empty. Returning here guarantees the next turn never unlocks while a
+			# previous piece/card is still filling the screen.
+			await camera_director.show_board(0.48)
+			await get_tree().create_timer(0.12).timeout
 		CamelEvent.GAME_END_TRIGGERED:
 			await _place_pending_die_history()
 		CamelEvent.GAME_ENDED:

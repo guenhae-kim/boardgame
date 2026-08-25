@@ -40,6 +40,7 @@ func _build_ui() -> void:
 	online_ui.interaction_mode_changed.connect(_on_interaction_mode)
 	online_ui.chat_send_requested.connect(Callable(_network, "send_chat"))
 	online_ui.sound_requested.connect(sound_manager.play)
+	online_ui.overview_requested.connect(func(): camera_director.show_board(0.35))
 
 func start_room(payload: Dictionary) -> void:
 	set_room_active(true)
@@ -152,7 +153,7 @@ func _drain_updates() -> void:
 		if not game_busy:
 			online_ui.set_turn_deadline(int(payload.get("turn_deadline_ms", 0)), int(payload.get("server_time", 0)), can_act)
 		dice.gesture_enabled = can_act
-		if can_act: _on_interaction_mode("", [])
+		if can_act: _on_interaction_mode("bet", CamelGameState.RACE_CAMELS)
 		if game_busy:
 			_network.send_game_ready(int(payload.get("game_sequence", 0)))
 		elif local_player_id == host_player_id and bool(current.get("is_cpu", false)) and rules.state.phase == "PLAYING":
@@ -173,7 +174,7 @@ func _on_game_unlocked(payload: Dictionary) -> void:
 	online_ui.set_turn_deadline(int(payload.get("turn_deadline_ms", 0)), int(payload.get("server_time", 0)), can_act)
 	dice.gesture_enabled = can_act
 	if can_act:
-		_on_interaction_mode("", [])
+		_on_interaction_mode("bet", CamelGameState.RACE_CAMELS)
 	if local_player_id == host_player_id and bool(current.get("is_cpu", false)) and rules.state.phase == "PLAYING":
 		_schedule_cpu(current_id)
 
@@ -239,7 +240,13 @@ func _on_pyramid_gesture_started() -> void:
 	if dice.gesture_enabled: online_ui.set_action_enabled(false)
 
 func _on_chat_message(payload: Dictionary) -> void:
-	if str(payload.get("room_code", "")) == room_code: online_ui.receive_chat(str(payload.get("nickname", "Player")), str(payload.get("text", "")))
+	if str(payload.get("room_code", "")) != room_code:
+		return
+	var player_id := str(payload.get("player_id", ""))
+	var text := str(payload.get("text", ""))
+	online_ui.receive_chat(str(payload.get("nickname", "Player")), text, player_id)
+	if rules != null and not player_id.is_empty():
+		board.show_reaction(player_id, text, rules.state)
 
 func _on_server_error(code: String, message: String) -> void:
 	if room_code.is_empty(): return

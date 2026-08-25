@@ -11,6 +11,11 @@ func _run() -> void:
 	root.add_child(online)
 	online._network.set_process(false)
 	for unused in 5: await process_frame
+	var car_follow := online.get_node("CityEnvironment/CityRoadPath/CarFollow") as PathFollow3D
+	var car_progress := car_follow.progress_ratio
+	await create_timer(0.2).timeout
+	_check(car_follow.progress_ratio != car_progress, "editor-placeable city car moves along its independent road path")
+	_check(online.get_node("CityEnvironment/TrafficLightA/Green") is MeshInstance3D, "editor-placeable traffic light cycles emissive signal meshes")
 	var roster := [
 		{"player_id": "player_1", "nickname": "Host", "is_cpu": false, "connected": true, "is_host": true},
 		{"player_id": "player_2", "nickname": "Friend", "is_cpu": false, "connected": true, "is_host": false},
@@ -23,6 +28,7 @@ func _run() -> void:
 	for index in roster.size():
 		var player := rules.state.players[index] as Dictionary
 		player["id"] = roster[index]["player_id"]; player["is_cpu"] = roster[index]["is_cpu"]; player["connected"] = true
+	(rules.state.player_by_id("player_1")["leg_tickets"] as Array).append({"camel": "red", "value": 5})
 	online._on_game_update({
 		"room_code": "TEST", "game_sequence": 1, "actor_id": "", "events": [],
 		"public_state": CamelGameProjection.public_state(rules.state),
@@ -33,7 +39,10 @@ func _run() -> void:
 	await create_timer(0.5).timeout
 	_check(online.board.visible and not online.lobby_ui._root.visible, "authoritative update reveals the shared 3D board")
 	_check(online.online_ui._private_cards.size() == 5 and online.online_ui._hand_cards.size() == 5, "local player sees five tactile private cards")
+	_check(online.online_ui._hand_row.get_child_count() == 6, "hand contains prediction cards plus the spectator tool, never acquired betting tickets")
+	_check((online.online_ui._ticket_rows["player_1"] as HBoxContainer).get_child_count() == 1, "acquired betting ticket appears beside its owner HUD")
 	_check(not online.online_ui._roll_button.disabled, "only current local player action controls are enabled")
+	_check(online.board._enabled_targets.has("bet:red"), "legal board betting stacks are directly tappable on my turn")
 	online.online_ui._select_card("red")
 	_check(online.board._enabled_targets.has("prediction:winner") and online.board._enabled_targets.has("prediction:loser"), "selecting a hand card highlights only prediction zones")
 	var submitted: Array = []
