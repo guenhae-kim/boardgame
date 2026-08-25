@@ -58,6 +58,8 @@ var _server_clock_offset_ms := 0
 var _timer_is_mine := false
 var _last_warning_second := -1
 var _result_panel: PanelContainer
+var _result_title: Label
+var _result_reason: Label
 var _result_label: Label
 
 
@@ -543,17 +545,37 @@ func _build_emote_panel() -> void:
 func _build_result_panel() -> void:
 	_result_panel = PanelContainer.new()
 	_result_panel.visible = false
+	_result_panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	_result_panel.add_theme_stylebox_override("panel", _panel_style(Color("fff4d8"), 0.98, Color("f2c66d"), 4, 24))
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 24)
+	margin.add_theme_constant_override("margin_right", 24)
+	margin.add_theme_constant_override("margin_top", 20)
+	margin.add_theme_constant_override("margin_bottom", 20)
 	var box := VBoxContainer.new()
-	var title := Label.new()
-	title.text = "경주 종료!"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 28)
-	box.add_child(title)
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_theme_constant_override("separation", 10)
+	_result_title = Label.new()
+	_result_title.text = "경주 종료!"
+	_result_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_result_title.add_theme_color_override("font_color", Color("6f4228"))
+	_result_title.add_theme_font_size_override("font_size", 28)
+	box.add_child(_result_title)
+	_result_reason = Label.new()
+	_result_reason.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_result_reason.add_theme_color_override("font_color", Color("a06c3f"))
+	_result_reason.text = "결승선을 통과한 동물이 나왔어요"
+	box.add_child(_result_reason)
+	var separator := HSeparator.new()
+	box.add_child(separator)
 	_result_label = Label.new()
 	_result_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_result_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_result_label.add_theme_color_override("font_color", Color("493528"))
+	_result_label.add_theme_font_size_override("font_size", 19)
 	box.add_child(_result_label)
-	_result_panel.add_child(box)
+	margin.add_child(box)
+	_result_panel.add_child(margin)
 	_root.add_child(_result_panel)
 
 
@@ -566,7 +588,9 @@ func _show_result(state: CamelGameState) -> void:
 	var lines: Array[String] = []
 	for index in standings.size():
 		var player := standings[index] as Dictionary
-		lines.append("%d위  %s  코인 %d" % [index + 1, str(player.get("name", "Player")), int(player.get("money", 0))])
+		lines.append("%d위  %s    코인 %d" % [index + 1, str(player.get("name", "Player")), int(player.get("money", 0))])
+	_result_title.text = "%s 우승!" % str((standings[0] as Dictionary).get("name", "Player")) if standings.size() > 0 else "경주 종료!"
+	_result_reason.text = "결승선을 통과한 동물이 나와 최종 정산을 마쳤어요" if state.game_end_reason == "finish_crossed" else "최종 정산을 마쳤어요"
 	_result_label.text = "\n".join(lines)
 
 
@@ -677,5 +701,9 @@ func _apply_responsive_layout() -> void:
 		_tile_face_panel.position = Vector2(viewport_size.x * 0.5 - 115, viewport_size.y * 0.52)
 		_tile_face_panel.size = Vector2(230, 108)
 	if _result_panel != null:
-		_result_panel.position = Vector2(viewport_size.x * 0.12, viewport_size.y * 0.22)
-		_result_panel.size = Vector2(viewport_size.x * 0.76, viewport_size.y * 0.5)
+		var result_size := Vector2(viewport_size.x * (0.82 if portrait else 0.46), viewport_size.y * (0.30 if portrait else 0.48))
+		_result_panel.position = (viewport_size - result_size) * 0.5
+		_result_panel.size = result_size
+		_result_title.add_theme_font_size_override("font_size", int(28 * ui_scale))
+		_result_reason.add_theme_font_size_override("font_size", int(13 * ui_scale))
+		_result_label.add_theme_font_size_override("font_size", int(19 * ui_scale))

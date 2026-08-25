@@ -30,6 +30,14 @@ func _capture() -> void:
 	(rules.state.player_by_id("player_1")["leg_tickets"] as Array).append({"camel": "red", "value": 5})
 	(rules.state.player_by_id("player_2")["leg_tickets"] as Array).append({"camel": "blue", "value": 3})
 	rules.state.dice_history = [{"die": "red", "camel": "red", "value": 3}, {"die": "blue", "camel": "blue", "value": 1}]
+	if "--game-over" in OS.get_cmdline_user_args():
+		rules.state.phase = "GAME_OVER"
+		rules.state.game_end_reason = "finish_crossed"
+		(rules.state.players[0] as Dictionary)["money"] = 27
+		(rules.state.players[1] as Dictionary)["money"] = 22
+		(rules.state.players[2] as Dictionary)["money"] = 19
+		(rules.state.players[3] as Dictionary)["money"] = 16
+		rules.state.winners = ["player_1"]
 	var server_time := int(Time.get_unix_time_from_system() * 1000.0)
 	online._on_game_update({"room_code": "K7DF", "game_sequence": 1, "actor_id": "", "events": [], "public_state": CamelGameProjection.public_state(rules.state), "private_state": CamelGameProjection.private_states(rules.state)["player_1"], "authority_state": rules.state.to_dict(), "game_busy": false, "server_time": server_time, "turn_deadline_ms": server_time + 43000})
 	if "--highlight" in OS.get_cmdline_user_args():
