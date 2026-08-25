@@ -60,7 +60,10 @@ func play_roll(die_id: String, forced_result: int = 0, throw_strength: float = 1
 
 	var elapsed := 0.0
 	var stable := 0.0
-	while elapsed < 1.05 and stable < 0.14:
+	# Always show a readable tumble. Previously a lucky early collision could end
+	# the loop almost immediately, while a fast die was snapped to the server
+	# result at the timeout. Both cases made the visible roll feel unrelated.
+	while elapsed < 1.05 and (elapsed < 0.72 or stable < 0.14):
 		await get_tree().physics_frame
 		var delta := 1.0 / float(Engine.physics_ticks_per_second)
 		elapsed += delta
@@ -70,15 +73,12 @@ func play_roll(die_id: String, forced_result: int = 0, throw_strength: float = 1
 			stable += delta
 		else:
 			stable = 0.0
-	die.linear_velocity = Vector3.ZERO
-	die.angular_velocity = Vector3.ZERO
-	die.freeze = true
 	_hatch.scale.x = 1.0
 	var result := _read_top_face()
 	if forced_result in [1, 2, 3]:
 		result = forced_result
-		_orient_top(result)
-	await get_tree().create_timer(0.16).timeout
+	await _settle_to_result(result)
+	await get_tree().create_timer(0.06).timeout
 	return result
 
 
@@ -99,13 +99,42 @@ func _read_top_face() -> int:
 
 
 func _orient_top(result: int) -> void:
+	die.rotation = _target_rotation(result)
+
+
+func _target_rotation(result: int) -> Vector3:
 	match result:
-		1:
-			die.rotation = Vector3.ZERO
 		2:
-			die.rotation = Vector3(0, 0, -PI * 0.5)
+			return Vector3(0, 0, -PI * 0.5)
 		3:
-			die.rotation = Vector3(PI * 0.5, 0, 0)
+			return Vector3(PI * 0.5, 0, 0)
+		_:
+			return Vector3.ZERO
+
+
+func _settle_to_result(result: int) -> void:
+	# The authority already chose the result so every phone must show the same
+	# value. Continue the visible angular motion into a short final hop and land
+	# on that exact face instead of teleporting the rotation.
+	var current_rotation := die.rotation
+	var spin_direction := -1.0 if _rng.randi() % 2 == 0 else 1.0
+	var target_rotation := _target_rotation(result)
+	var animated_target := target_rotation + Vector3(TAU * spin_direction, TAU, TAU * -spin_direction)
+	var floor_y := maxf(0.53, die.position.y)
+	die.linear_velocity = Vector3.ZERO
+	die.angular_velocity = Vector3.ZERO
+	die.freeze = true
+	die.rotation = current_rotation
+	var tween := create_tween()
+	tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(die, "position:y", floor_y + 0.20, 0.11)
+	tween.parallel().tween_property(die, "rotation", current_rotation.lerp(animated_target, 0.58), 0.11)
+	tween.set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
+	tween.tween_property(die, "position:y", 0.53, 0.17)
+	tween.parallel().tween_property(die, "rotation", animated_target, 0.17)
+	await tween.finished
+	die.rotation = target_rotation
+	die.position.y = 0.53
 
 
 func _build_arena() -> void:
@@ -382,10 +411,13 @@ func _build_die() -> void:
 
 func _add_face_label(text_value: String, position_value: Vector3, rotation_value: Vector3) -> void:
 	var label := Label3D.new()
+	label.name = "Face%s" % text_value
 	label.text = text_value
-	label.font_size = 96
-	label.modulate = Color("22242a")
-	label.outline_size = 0
+	label.font_size = 88
+	label.pixel_size = 0.0046
+	label.modulate = Color("fff9e8")
+	label.outline_modulate = Color("29252a")
+	label.outline_size = 10
 	label.position = position_value
 	label.rotation = rotation_value
 	die.add_child(label)
@@ -397,6 +429,11 @@ func _set_die_color(die_id: String) -> void:
 		"red": Color("ef5350"), "purple": Color("a66cff"), "gray": Color("9aa0aa"),
 	}
 	_die_material.albedo_color = colors.get(die_id, Color("f4eee1"))
+	var light_face := die_id == "yellow"
+	for child in die.get_children():
+		if child is Label3D:
+			(child as Label3D).modulate = Color("29252a") if light_face else Color("fff9e8")
+			(child as Label3D).outline_modulate = Color("fff2c8") if light_face else Color("29252a")
 
 
 func _build_bumpers() -> void:

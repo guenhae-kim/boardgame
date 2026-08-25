@@ -29,6 +29,7 @@ func _run() -> void:
 		var player := rules.state.players[index] as Dictionary
 		player["id"] = roster[index]["player_id"]; player["is_cpu"] = roster[index]["is_cpu"]; player["connected"] = true
 	(rules.state.player_by_id("player_1")["leg_tickets"] as Array).append({"camel": "red", "value": 5})
+	rules.state.dice_history = [{"die": "red", "camel": "red", "value": 3}, {"die": "blue", "camel": "blue", "value": 1}]
 	online._on_game_update({
 		"room_code": "TEST", "game_sequence": 1, "actor_id": "", "events": [],
 		"public_state": CamelGameProjection.public_state(rules.state),
@@ -41,6 +42,12 @@ func _run() -> void:
 	_check(online.online_ui._private_cards.size() == 5 and online.online_ui._hand_cards.size() == 5, "local player sees five tactile private cards")
 	_check(online.online_ui._hand_row.get_child_count() == 6, "hand contains prediction cards plus the spectator tool, never acquired betting tickets")
 	_check((online.online_ui._ticket_rows["player_1"] as HBoxContainer).get_child_count() == 1, "acquired betting ticket appears beside its owner HUD")
+	_check((online.online_ui._history_slots[0].get_node("Value") as Label).text == "3" and (online.online_ui._history_slots[1].get_node("Value") as Label).text == "1", "dice history uses clear face values without cramped color text")
+	online.online_ui.receive_chat("Friend", "red please three", "player_2")
+	_check(online.online_ui._hud_chat_bubbles.has("player_2"), "room chat appears as a visible speech bubble beside its sender HUD")
+	var top_bet_card := (online.board._bet_card_nodes["red"] as Array)[-1] as Node3D
+	var top_bet_label := top_bet_card.get_child(1) as Label3D
+	_check(is_zero_approx(top_bet_label.rotation.x + PI * 0.5), "betting value is printed flat on the physical card surface")
 	_check(not online.online_ui._roll_button.disabled, "only current local player action controls are enabled")
 	_check(online.board._enabled_targets.has("bet:red"), "legal board betting stacks are directly tappable on my turn")
 	online.online_ui._select_card("red")

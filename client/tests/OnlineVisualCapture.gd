@@ -42,6 +42,8 @@ func _capture() -> void:
 	online._on_game_update({"room_code": "K7DF", "game_sequence": 1, "actor_id": "", "events": [], "public_state": CamelGameProjection.public_state(rules.state), "private_state": CamelGameProjection.private_states(rules.state)["player_1"], "authority_state": rules.state.to_dict(), "game_busy": false, "server_time": server_time, "turn_deadline_ms": server_time + 43000})
 	if "--highlight" in OS.get_cmdline_user_args():
 		online.online_ui._select_card("red")
+	if "--chat" in OS.get_cmdline_user_args():
+		online.online_ui.receive_chat("친구", "빨강 제발 3!", "player_2")
 	await online.camera_director.show_board(0.0)
 	await create_timer(1.5).timeout
 	var image := root.get_viewport().get_texture().get_image()

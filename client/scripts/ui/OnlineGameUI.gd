@@ -52,6 +52,7 @@ var _chat_input: LineEdit
 var _emote_panel: PanelContainer
 var _chat_lines: Array[String] = []
 var _unread := 0
+var _hud_chat_bubbles: Dictionary = {}
 var _timer_label: Label
 var _turn_deadline_ms := 0
 var _server_clock_offset_ms := 0
@@ -270,7 +271,7 @@ func handle_board_target(target_type: String, target_id: String) -> void:
 			_tile_face_panel.visible = true
 
 
-func receive_chat(nickname: String, text: String, _player_id: String = "") -> void:
+func receive_chat(nickname: String, text: String, player_id: String = "") -> void:
 	_chat_lines.append("%s: %s" % [nickname, text])
 	if _chat_lines.size() > 50:
 		_chat_lines.pop_front()
@@ -279,6 +280,62 @@ func receive_chat(nickname: String, text: String, _player_id: String = "") -> vo
 		_unread += 1
 		_chat_badge.text = str(_unread)
 		_chat_badge.visible = true
+	if not player_id.is_empty():
+		_show_hud_chat_bubble(player_id, nickname, text)
+
+
+func _show_hud_chat_bubble(player_id: String, nickname: String, text: String) -> void:
+	if not _player_cards.has(player_id):
+		return
+	if _hud_chat_bubbles.has(player_id):
+		var previous := _hud_chat_bubbles[player_id] as Control
+		if is_instance_valid(previous):
+			previous.queue_free()
+	var ui_scale := _display_scale()
+	var bubble := PanelContainer.new()
+	bubble.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bubble.z_index = 50
+	var desired_size := Vector2(168, 44) * ui_scale
+	bubble.custom_minimum_size = desired_size
+	bubble.size = desired_size
+	bubble.clip_contents = true
+	var ids := _player_cards.keys()
+	var player_index := maxi(0, ids.find(player_id))
+	bubble.add_theme_stylebox_override("panel", _panel_style(Color("fff9e9"), 0.98, PLAYER_COLORS[player_index % PLAYER_COLORS.size()], 3, 14))
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", int(12 * ui_scale))
+	margin.add_theme_constant_override("margin_right", int(12 * ui_scale))
+	margin.add_theme_constant_override("margin_top", int(7 * ui_scale))
+	margin.add_theme_constant_override("margin_bottom", int(7 * ui_scale))
+	var label := Label.new()
+	label.text = "%s: %s" % [nickname, text.left(32)]
+	label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.add_theme_color_override("font_color", Color("423229"))
+	label.add_theme_font_size_override("font_size", int(16 * ui_scale))
+	margin.add_child(label)
+	bubble.add_child(margin)
+	_root.add_child(bubble)
+	var hud := _player_cards[player_id] as Control
+	var viewport_size := get_viewport().get_visible_rect().size
+	var bubble_size := desired_size
+	var x := clampf(hud.position.x + (hud.size.x - bubble_size.x) * 0.5, 8.0, viewport_size.x - bubble_size.x - 8.0)
+	var below := hud.position.y < viewport_size.y * 0.5
+	var y := hud.position.y + hud.size.y + 8.0 if below else hud.position.y - bubble_size.y - 8.0
+	bubble.position = Vector2(x, y)
+	bubble.pivot_offset = bubble_size * 0.5
+	bubble.scale = Vector2(0.72, 0.72)
+	_hud_chat_bubbles[player_id] = bubble
+	var tween := create_tween()
+	tween.tween_property(bubble, "scale", Vector2.ONE, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.tween_interval(2.6)
+	tween.tween_property(bubble, "modulate:a", 0.0, 0.22)
+	await tween.finished
+	if _hud_chat_bubbles.get(player_id) == bubble:
+		_hud_chat_bubbles.erase(player_id)
+	if is_instance_valid(bubble):
+		bubble.queue_free()
 
 
 func cancel_selection() -> void:
@@ -441,8 +498,12 @@ func _rebuild_ticket_row(player_id: String, tickets: Array) -> void:
 		var badge := Label.new()
 		badge.text = "%d" % int(ticket.get("value", 0))
 		badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		badge.custom_minimum_size = Vector2(24, 18) * ui_scale
-		badge.add_theme_font_size_override("font_size", int(10 * ui_scale))
+		badge.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		badge.custom_minimum_size = Vector2(30, 24) * ui_scale
+		badge.add_theme_font_size_override("font_size", int(15 * ui_scale))
+		badge.add_theme_color_override("font_color", Color("fff9e8"))
+		badge.add_theme_color_override("font_outline_color", Color("423229"))
+		badge.add_theme_constant_override("outline_size", int(3 * ui_scale))
 		badge.add_theme_stylebox_override("normal", _panel_style(CAMEL_UI_COLORS.get(camel, Color.GRAY), 1.0, Color.WHITE, 1, 5))
 		row.add_child(badge)
 
@@ -454,7 +515,11 @@ func _refresh_history(history: Array) -> void:
 		if index < history.size():
 			var result := history[index] as Dictionary
 			var camel := str(result.get("camel", result.get("die", "")))
-			value_label.text = "%s%d" % [str(CAMEL_NAMES.get(camel, camel)).left(1), int(result.get("value", 0))]
+			value_label.text = str(int(result.get("value", 0)))
+			value_label.tooltip_text = "%s 주사위 %d" % [str(CAMEL_NAMES.get(camel, camel)), int(result.get("value", 0))]
+			value_label.add_theme_color_override("font_color", Color("29252a") if camel == "yellow" else Color("fff9e8"))
+			value_label.add_theme_color_override("font_outline_color", Color("fff2c8") if camel == "yellow" else Color("29252a"))
+			value_label.add_theme_constant_override("outline_size", 3)
 			slot.add_theme_stylebox_override("panel", _panel_style(CAMEL_UI_COLORS.get(camel, Color.GRAY), 1.0, Color.WHITE, 1, 8))
 		else:
 			value_label.text = "·"
@@ -681,8 +746,8 @@ func _apply_responsive_layout() -> void:
 	_cancel_button.custom_minimum_size = Vector2(50, 42) * ui_scale
 	_cancel_button.add_theme_font_size_override("font_size", int(11 * ui_scale))
 	for slot in _history_slots:
-		slot.custom_minimum_size = Vector2(29, 27) * ui_scale
-		(slot.get_node("Value") as Label).add_theme_font_size_override("font_size", int(10 * ui_scale))
+		slot.custom_minimum_size = Vector2(34, 32) * ui_scale
+		(slot.get_node("Value") as Label).add_theme_font_size_override("font_size", int(17 * ui_scale))
 	if _chat_button != null:
 		var rail_y := viewport_size.y * 0.42
 		_chat_button.position = Vector2(viewport_size.x - 56 * ui_scale, rail_y)

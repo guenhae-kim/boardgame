@@ -429,10 +429,12 @@ func _create_bet_card(camel_id: String, value: int, index: int) -> Node3D:
 	var value_label := Label3D.new()
 	value_label.text = str(value)
 	value_label.font_size = 58
-	value_label.outline_size = 10
+	value_label.pixel_size = 0.0052
+	value_label.outline_size = 8
+	value_label.outline_modulate = Color("51392d")
 	value_label.modulate = Color("fff6db")
-	value_label.position = Vector3(0, 0.1, 0)
-	value_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	value_label.position = Vector3(0, 0.052, 0)
+	value_label.rotation.x = -PI * 0.5
 	card.add_child(value_label)
 	return card
 
@@ -499,8 +501,9 @@ func _create_face_down_card(player_id: String) -> Node3D:
 	label.text = "?\n" + player_id.replace("player_", "P")
 	label.font_size = 38
 	label.outline_size = 8
-	label.position.y = 0.08
-	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	label.pixel_size = 0.0045
+	label.position.y = 0.046
+	label.rotation.x = -PI * 0.5
 	card.add_child(label)
 	return card
 
@@ -560,10 +563,13 @@ func _create_history_die(die_id: String, value: int) -> Node3D:
 	root.add_child(mesh_node)
 	var label := Label3D.new()
 	label.text = str(value)
-	label.font_size = 72
-	label.outline_size = 10
-	label.position = Vector3(0, 0.53, 0)
-	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	label.font_size = 82
+	label.pixel_size = 0.0048
+	label.outline_size = 9
+	label.outline_modulate = Color("29252a")
+	label.modulate = Color("fff9e8") if die_id != "yellow" else Color("29252a")
+	label.position = Vector3(0, 0.506, 0)
+	label.rotation.x = -PI * 0.5
 	root.add_child(label)
 	return root
 
@@ -574,7 +580,7 @@ func _create_spectator_token(player_id: String, side: String) -> Node3D:
 	var mesh := CylinderMesh.new(); mesh.top_radius = 0.46; mesh.bottom_radius = 0.46; mesh.height = 0.1
 	marker.mesh = mesh; marker.material_override = _material(Color("43d6d1") if side == "oasis" else Color("e9749c")); root.add_child(marker)
 	var label := Label3D.new(); label.text = "%s\n%s" % ["+1" if side == "oasis" else "-1", player_id.replace("player_", "P").replace("cpu_", "CPU")]
-	label.font_size = 34; label.outline_size = 7; label.position.y = 0.12; label.billboard = BaseMaterial3D.BILLBOARD_ENABLED; root.add_child(label)
+	label.font_size = 34; label.pixel_size = 0.0048; label.outline_size = 7; label.position.y = 0.056; label.rotation.x = -PI * 0.5; root.add_child(label)
 	return root
 
 

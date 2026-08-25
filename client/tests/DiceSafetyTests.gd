@@ -23,6 +23,10 @@ func _run() -> void:
 		_check(absf(dice.die.position.x) <= 3.75 and absf(dice.die.position.z) <= 2.75 and dice.die.position.y >= -0.7, "%s die remains inside the tray at strength %.1f" % [die_id, strength])
 	var average := elapsed_total / die_ids.size()
 	_check(average <= 1.6, "average dice animation stays at or below 1.6 seconds (%.2fs)" % average)
+	for forced_value in [1, 2, 3]:
+		var visible_result := await dice.play_roll("blue", forced_value, 2.25)
+		_check(visible_result == forced_value, "authoritative result %d is returned after the visible roll" % forced_value)
+		_check(dice._read_top_face() == forced_value, "authoritative result %d is the actual visible top face" % forced_value)
 	print("Dice containment: ", "FAILED" if failed else "PASSED", " · average %.2fs" % average)
 	quit(1 if failed else 0)
 
