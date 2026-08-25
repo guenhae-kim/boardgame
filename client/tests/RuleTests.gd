@@ -145,6 +145,8 @@ func _test_leg_scoring_breakdown_and_event_order() -> void:
 	var cards := player_one.get("betting_cards", []) as Array
 	_check(cards.size() == 2, "breakdown contains each acquired betting card")
 	_check(int((cards[0] as Dictionary)["value"]) == 5 and int((cards[1] as Dictionary)["value"]) == -1, "betting card outcomes come from race order rules")
+	_check(str((cards[0] as Dictionary)["result_category"]) == "first" and int((cards[0] as Dictionary)["finish_rank"]) == 1, "breakdown labels first-place ticket outcome authoritatively")
+	_check(str((cards[1] as Dictionary)["result_category"]) == "other" and int((cards[1] as Dictionary)["finish_rank"]) == 5, "breakdown labels losing ticket outcome authoritatively")
 	_check(int(player_one["dice_roll_count"]) == 2 and int(player_one["dice_reward"]) == 2, "dice action count pays one coin per roll")
 	_check(int(player_one["round_delta"]) == 6, "round delta contains only betting cards and dice reward")
 	_check(not player_one.has("spectator") and not player_one.has("final_bets"), "round breakdown excludes immediate spectator and final prediction scoring")

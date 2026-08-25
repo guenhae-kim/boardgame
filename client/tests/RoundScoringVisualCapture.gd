@@ -18,12 +18,13 @@ func _capture() -> void:
 		{
 			"player_id": "player_1", "player_name": "꼬부기", "money_before": 12,
 			"betting_cards": [
-				{"card_id": "p1_leg_2_0", "color": "red", "printed_value": 5, "value": 5, "running_total": 5, "money_after": 17},
-				{"card_id": "p1_leg_2_1", "color": "blue", "printed_value": 3, "value": 3, "running_total": 8, "money_after": 20},
-				{"card_id": "p1_leg_2_2", "color": "green", "printed_value": 2, "value": -1, "running_total": 7, "money_after": 19},
+				{"card_id": "p1_leg_2_0", "color": "red", "result_category": "first", "finish_rank": 1, "printed_value": 5, "value": 5, "running_total": 5, "money_after": 17},
+				{"card_id": "p1_leg_2_1", "color": "red", "result_category": "first", "finish_rank": 1, "printed_value": 3, "value": 3, "running_total": 8, "money_after": 20},
+				{"card_id": "p1_leg_2_2", "color": "blue", "result_category": "second", "finish_rank": 2, "printed_value": 2, "value": 1, "running_total": 9, "money_after": 21},
+				{"card_id": "p1_leg_2_3", "color": "green", "result_category": "other", "finish_rank": 3, "printed_value": 2, "value": -1, "running_total": 8, "money_after": 20},
 			],
-			"card_delta": 7, "dice_roll_count": 2, "dice_reward": 2,
-			"dice_running_total": 9, "round_delta": 9, "money_after": 21,
+			"card_delta": 8, "dice_roll_count": 2, "dice_reward": 2,
+			"dice_running_total": 10, "round_delta": 10, "money_after": 22,
 		},
 		{
 			"player_id": "player_2", "player_name": "친구", "money_before": 8,

@@ -91,26 +91,15 @@ func _show_player_table(data: Dictionary) -> void:
 	_table_total.visible = true
 	_clear_breakdown_rows()
 
-	var cards := data.get("betting_cards", []) as Array
-	if cards.is_empty():
-		_add_breakdown_row(null, "구간 베팅 카드 없음", "", 0, true)
-	else:
-		for card_value in cards:
-			var card_data := card_value as Dictionary
-			var color_id := str(card_data.get("color", "red"))
-			_add_breakdown_row(
-				PORTRAITS.get(color_id, PORTRAITS["red"]),
-				"%s 구간 베팅" % CAMEL_NAMES.get(color_id, color_id),
-				"카드 %d" % int(card_data.get("printed_value", 0)),
-				int(card_data.get("value", 0)),
-				false,
-				CAMEL_COLORS.get(color_id, Color("d88b63")),
-			)
+	var groups := _group_card_results(data.get("betting_cards", []) as Array)
+	_add_result_group_row("first", "1등 적중 카드", groups["first"] as Array, int(groups["first_total"]), Color("e3ad35"))
+	_add_result_group_row("second", "2등 적중 카드", groups["second"] as Array, int(groups["second_total"]), Color("68a5d9"))
+	_add_result_group_row("other", "나머지 카드", groups["other"] as Array, int(groups["other_total"]), Color("c76b6b"))
 
 	_add_breakdown_row(
 		load("res://assets/ui/dice_icon.svg") as Texture2D,
-		"주사위 굴리기",
-		"× %d회" % int(data.get("dice_roll_count", 0)),
+		"주사위 진행 횟수",
+		"+1 × %d회" % int(data.get("dice_roll_count", 0)),
 		int(data.get("dice_reward", 0)),
 		false,
 		Color("d8a33d"),
@@ -140,7 +129,45 @@ func _show_player_table(data: Dictionary) -> void:
 	await _wait_or_skip(2.25)
 
 
-func _add_breakdown_row(icon: Texture2D, title: String, detail: String, value: int, muted: bool, accent: Color = Color("d0a45b")) -> void:
+func _group_card_results(cards: Array) -> Dictionary:
+	var result := {
+		"first": [], "second": [], "other": [],
+		"first_total": 0, "second_total": 0, "other_total": 0,
+	}
+	for card_value in cards:
+		var card := card_value as Dictionary
+		var category := str(card.get("result_category", ""))
+		if category.is_empty():
+			# Compatibility with a game started on an older server build.
+			var applied_value := int(card.get("value", 0))
+			category = "first" if applied_value > 1 else ("second" if applied_value == 1 else "other")
+		if not result.has(category):
+			category = "other"
+		(result[category] as Array).append(card)
+		result["%s_total" % category] = int(result["%s_total" % category]) + int(card.get("value", 0))
+	return result
+
+
+func _add_result_group_row(category: String, title: String, cards: Array, total: int, accent: Color) -> void:
+	var badge := "1위" if category == "first" else ("2위" if category == "second" else "실패")
+	if cards.is_empty():
+		_add_breakdown_row(null, title, "0장", 0, true, accent, badge)
+		return
+	var detail := ""
+	match category:
+		"first":
+			var values: Array[String] = []
+			for card_value in cards:
+				values.append(_signed(int((card_value as Dictionary).get("value", 0))))
+			detail = "%s · %d장" % ["  ".join(values), cards.size()]
+		"second":
+			detail = "+1 × %d장" % cards.size()
+		_:
+			detail = "-1 × %d장" % cards.size()
+	_add_breakdown_row(null, title, detail, total, false, accent, badge)
+
+
+func _add_breakdown_row(icon: Texture2D, title: String, detail: String, value: int, muted: bool, accent: Color = Color("d0a45b"), badge_text: String = "") -> void:
 	var row := PanelContainer.new()
 	row.custom_minimum_size.y = 54.0 * _ui_scale
 	var style := StyleBoxFlat.new()
@@ -158,12 +185,26 @@ func _add_breakdown_row(icon: Texture2D, title: String, detail: String, value: i
 	var line := HBoxContainer.new()
 	line.add_theme_constant_override("separation", roundi(7.0 * _ui_scale))
 	margin.add_child(line)
-	var icon_view := TextureRect.new()
-	icon_view.custom_minimum_size = Vector2(42, 42) * _ui_scale
-	icon_view.texture = icon
-	icon_view.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	icon_view.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	line.add_child(icon_view)
+	if not badge_text.is_empty():
+		var badge := Label.new()
+		badge.custom_minimum_size = Vector2(42, 34) * _ui_scale
+		badge.text = badge_text
+		badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		badge.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		badge.add_theme_color_override("font_color", Color("fff9eb"))
+		badge.add_theme_font_size_override("font_size", _scaled_font(12 if badge_text.length() > 2 else 14))
+		var badge_style := StyleBoxFlat.new()
+		badge_style.bg_color = accent.darkened(0.12) if not muted else Color("9d9489")
+		badge_style.set_corner_radius_all(roundi(9.0 * _ui_scale))
+		badge.add_theme_stylebox_override("normal", badge_style)
+		line.add_child(badge)
+	else:
+		var icon_view := TextureRect.new()
+		icon_view.custom_minimum_size = Vector2(42, 42) * _ui_scale
+		icon_view.texture = icon
+		icon_view.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon_view.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		line.add_child(icon_view)
 	var title_label := Label.new()
 	title_label.text = title
 	title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL

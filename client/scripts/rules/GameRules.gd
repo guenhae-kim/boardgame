@@ -352,6 +352,8 @@ func _resolve_leg(events: Array, game_is_ending: bool) -> void:
 			betting_cards.append({
 				"card_id": "%s_leg_%d_%d" % [player_id, state.leg_number, ticket_index],
 				"color": str(ticket["camel"]),
+				"finish_rank": rank + 1,
+				"result_category": "first" if rank == 0 else ("second" if rank == 1 else "other"),
 				"printed_value": int(ticket["value"]),
 				"value": applied_reward,
 				"running_total": running_total,
