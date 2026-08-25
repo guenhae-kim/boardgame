@@ -13,6 +13,7 @@ func _init() -> void:
 	_test_oasis_and_mirage()
 	_test_spectator_placement_validation()
 	_test_leg_scoring_and_money_floor()
+	_test_leg_scoring_breakdown_and_event_order()
 	_test_six_player_partnership()
 	_test_final_bet_scoring_and_tie()
 	_test_online_projection_hides_private_cards()
@@ -119,6 +120,47 @@ func _test_leg_scoring_and_money_floor() -> void:
 	_check(int(rules.state.player_by_id("player_1")["money"]) == 9, "leg tickets and pyramid tickets score correctly")
 	_check(int(rules.state.player_by_id("player_2")["money"]) == 0, "money never drops below zero")
 	_check(rules.state.leg_number == 2 and rules.state.remaining_dice.size() == 6, "new leg resets dice and advances leg")
+
+
+func _test_leg_scoring_breakdown_and_event_order() -> void:
+	var rules := _rules()
+	CamelGameDebug.force_stacks(rules, {8: ["blue"], 7: ["red"], 6: ["yellow"], 5: ["green"], 4: ["purple"], 14: ["white"], 15: ["black"]})
+	rules.state.player_by_id("player_1")["leg_tickets"] = [{"camel": "blue", "value": 5}, {"camel": "purple", "value": 2}]
+	rules.state.player_by_id("player_1")["pyramid_tickets"] = 2
+	var events := rules.debug_resolve_leg()
+	var leg_event: CamelEvent
+	var leg_index := -1
+	var first_money_index := -1
+	for index in events.size():
+		var event := events[index] as CamelEvent
+		if event.type == CamelEvent.LEG_ENDED:
+			leg_event = event
+			leg_index = index
+		if first_money_index < 0 and event.type == CamelEvent.MONEY_CHANGED:
+			first_money_index = index
+	_check(leg_event != null, "leg end publishes authoritative scoring breakdown")
+	_check(leg_index >= 0 and first_money_index > leg_index, "detailed scoring presentation precedes legacy money events")
+	var breakdowns := leg_event.data.get("scoring", []) as Array
+	var player_one := breakdowns[0] as Dictionary
+	var cards := player_one.get("betting_cards", []) as Array
+	_check(cards.size() == 2, "breakdown contains each acquired betting card")
+	_check(int((cards[0] as Dictionary)["value"]) == 5 and int((cards[1] as Dictionary)["value"]) == -1, "betting card outcomes come from race order rules")
+	_check(int(player_one["dice_roll_count"]) == 2 and int(player_one["dice_reward"]) == 2, "dice action count pays one coin per roll")
+	_check(int(player_one["round_delta"]) == 6, "round delta contains only betting cards and dice reward")
+	_check(not player_one.has("spectator") and not player_one.has("final_bets"), "round breakdown excludes immediate spectator and final prediction scoring")
+
+	var last_roll := _rules()
+	CamelGameDebug.force_stacks(last_roll, {2: ["blue"], 4: ["red"], 6: ["yellow"], 8: ["green"], 10: ["purple"], 14: ["white"], 15: ["black"]})
+	last_roll.state.remaining_dice = ["blue", "gray"]
+	last_roll.state.pyramid_tickets_remaining = 1
+	last_roll.force_next_roll("blue", 1)
+	var result := last_roll.apply_action("player_1", CamelAction.new(CamelAction.ROLL_DIE))
+	var types: Array = []
+	for event_value in result.get("events", []):
+		types.append((event_value as CamelEvent).type)
+	_check(types.find(CamelEvent.DIE_ROLLED) < types.find(CamelEvent.CAMEL_MOVED), "last die result is emitted before piece movement")
+	_check(types.find(CamelEvent.CAMEL_MOVED) < types.find(CamelEvent.TURN_ENDED), "piece movement completes before turn-end presentation")
+	_check(types.find(CamelEvent.TURN_ENDED) < types.find(CamelEvent.LEG_ENDED), "round scoring starts only after turn-end overview event")
 
 
 func _test_spectator_placement_validation() -> void:

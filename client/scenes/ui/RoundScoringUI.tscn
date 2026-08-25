@@ -1,0 +1,217 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/RoundScoringUI.gd" id="1_script"]
+[ext_resource type="Theme" path="res://themes/GameTheme.tres" id="2_theme"]
+[ext_resource type="Texture2D" path="res://assets/ui/dice_icon.svg" id="3_dice"]
+
+[sub_resource type="StyleBoxFlat" id="OverlayPanel"]
+bg_color = Color(1, 0.965, 0.86, 0.985)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.86, 0.57, 0.25, 1)
+corner_radius_top_left = 28
+corner_radius_top_right = 28
+corner_radius_bottom_right = 28
+corner_radius_bottom_left = 28
+shadow_color = Color(0.08, 0.05, 0.03, 0.42)
+shadow_size = 12
+
+[sub_resource type="StyleBoxFlat" id="StagePanel"]
+bg_color = Color(1, 0.992, 0.94, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.74, 0.57, 0.32, 0.42)
+corner_radius_top_left = 22
+corner_radius_top_right = 22
+corner_radius_bottom_right = 22
+corner_radius_bottom_left = 22
+
+[node name="RoundScoringUI" type="Control"]
+process_mode = 3
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+theme = ExtResource("2_theme")
+script = ExtResource("1_script")
+
+[node name="Dim" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+color = Color(0.035, 0.055, 0.06, 0.72)
+
+[node name="Center" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 14.0
+offset_top = 28.0
+offset_right = -14.0
+offset_bottom = -28.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Panel" type="PanelContainer" parent="Center"]
+custom_minimum_size = Vector2(340, 610)
+layout_mode = 2
+theme_override_styles/panel = SubResource("OverlayPanel")
+
+[node name="Margin" type="MarginContainer" parent="Center/Panel"]
+layout_mode = 2
+theme_override_constants/margin_left = 20
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 20
+theme_override_constants/margin_bottom = 16
+
+[node name="Content" type="VBoxContainer" parent="Center/Panel/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="RoundTitle" type="Label" parent="Center/Panel/Margin/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.32, 0.21, 0.12, 1)
+theme_override_font_sizes/font_size = 25
+text = "ROUND 1 정산"
+horizontal_alignment = 1
+
+[node name="PlayerRow" type="HBoxContainer" parent="Center/Panel/Margin/Content"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 10
+
+[node name="Portrait" type="TextureRect" parent="Center/Panel/Margin/Content/PlayerRow"]
+custom_minimum_size = Vector2(66, 66)
+layout_mode = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="PlayerText" type="VBoxContainer" parent="Center/Panel/Margin/Content/PlayerRow"]
+layout_mode = 2
+alignment = 1
+
+[node name="PlayerName" type="Label" parent="Center/Panel/Margin/Content/PlayerRow/PlayerText"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.24, 0.17, 0.12, 1)
+theme_override_font_sizes/font_size = 22
+text = "플레이어"
+
+[node name="PlayerBadge" type="Label" parent="Center/Panel/Margin/Content/PlayerRow/PlayerText"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.55, 0.38, 0.22, 1)
+theme_override_font_sizes/font_size = 13
+text = "PLAYER 1 · 이번 라운드"
+
+[node name="Stage" type="PanelContainer" parent="Center/Panel/Margin/Content"]
+custom_minimum_size = Vector2(300, 360)
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_styles/panel = SubResource("StagePanel")
+
+[node name="StageMargin" type="MarginContainer" parent="Center/Panel/Margin/Content/Stage"]
+layout_mode = 2
+theme_override_constants/margin_left = 14
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 14
+theme_override_constants/margin_bottom = 12
+
+[node name="StageContent" type="VBoxContainer" parent="Center/Panel/Margin/Content/Stage/StageMargin"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 5
+
+[node name="ItemTitle" type="Label" parent="Center/Panel/Margin/Content/Stage/StageMargin/StageContent"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.38, 0.27, 0.18, 1)
+theme_override_font_sizes/font_size = 17
+text = "구간 베팅 카드"
+horizontal_alignment = 1
+
+[node name="Card" type="PanelContainer" parent="Center/Panel/Margin/Content/Stage/StageMargin/StageContent"]
+custom_minimum_size = Vector2(178, 196)
+layout_mode = 2
+size_flags_horizontal = 4
+
+[node name="CardBox" type="VBoxContainer" parent="Center/Panel/Margin/Content/Stage/StageMargin/StageContent/Card"]
+layout_mode = 2
+alignment = 1
+
+[node name="CardPortrait" type="TextureRect" parent="Center/Panel/Margin/Content/Stage/StageMargin/StageContent/Card/CardBox"]
+custom_minimum_size = Vector2(132, 128)
+layout_mode = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="CardCaption" type="Label" parent="Center/Panel/Margin/Content/Stage/StageMargin/StageContent/Card/CardBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.99, 0.93, 1)
+theme_override_font_sizes/font_size = 18
+text = "빨강 카드 5"
+horizontal_alignment = 1
+
+[node name="DiceIcon" type="TextureRect" parent="Center/Panel/Margin/Content/Stage/StageMargin/StageContent"]
+visible = false
+custom_minimum_size = Vector2(132, 132)
+layout_mode = 2
+size_flags_horizontal = 4
+texture = ExtResource("3_dice")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="ItemDelta" type="Label" parent="Center/Panel/Margin/Content/Stage/StageMargin/StageContent"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.16, 0.55, 0.27, 1)
+theme_override_font_sizes/font_size = 37
+text = "+5"
+horizontal_alignment = 1
+
+[node name="CurrentTotal" type="Label" parent="Center/Panel/Margin/Content/Stage/StageMargin/StageContent"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.34, 0.25, 0.18, 1)
+theme_override_font_sizes/font_size = 18
+text = "현재 정산  0 → +5"
+horizontal_alignment = 1
+
+[node name="CoinTotal" type="Label" parent="Center/Panel/Margin/Content/Stage/StageMargin/StageContent"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.67, 0.43, 0.12, 1)
+theme_override_font_sizes/font_size = 16
+text = "보유 코인 3 → 8"
+horizontal_alignment = 1
+
+[node name="Summary" type="RichTextLabel" parent="Center/Panel/Margin/Content/Stage/StageMargin/StageContent"]
+visible = false
+custom_minimum_size = Vector2(270, 235)
+layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+theme_override_colors/default_color = Color(0.28, 0.2, 0.14, 1)
+theme_override_font_sizes/normal_font_size = 18
+
+[node name="Progress" type="Label" parent="Center/Panel/Margin/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.47, 0.37, 0.27, 1)
+theme_override_font_sizes/font_size = 13
+text = "1 / 4"
+horizontal_alignment = 1
+
+[node name="Skip" type="Button" parent="Center/Panel/Margin/Content"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "빠르게 보기"
+

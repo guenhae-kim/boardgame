@@ -78,6 +78,15 @@ func _set_actions_enabled(enabled: bool) -> void:
 	create_button.disabled = not enabled
 	join_button.disabled = not enabled
 
+func show_home(message: String = "") -> void:
+	visible = true
+	modulate.a = 1.0
+	join_sheet.hide_sheet()
+	_set_actions_enabled(_network != null and _network.is_connected_to_server())
+	status_label.text = "● 친구들과 만날 준비 완료"
+	if not message.is_empty():
+		toast.show_message(message)
+
 
 func _on_room_entered(payload: Dictionary) -> void:
 	var tween := create_tween()

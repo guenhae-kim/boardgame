@@ -334,18 +334,62 @@ func _find_subarray(haystack: Array, needle: Array) -> int:
 
 func _resolve_leg(events: Array, game_is_ending: bool) -> void:
 	var order := get_race_order()
-	events.append(CamelEvent.new(CamelEvent.LEG_ENDED, {"leg": state.leg_number, "order": order.duplicate(), "dice_history": state.dice_history.duplicate(true)}))
+	var scoring_events: Array = []
+	var scoring_breakdowns: Array = []
 	for player in state.players:
 		var player_id := str(player["id"])
+		var money_before := int(player["money"])
+		var running_total := 0
+		var betting_cards: Array = []
+		var ticket_index := 0
 		for ticket in player["leg_tickets"]:
 			var rank := order.find(str(ticket["camel"]))
 			var reward := int(ticket["value"]) if rank == 0 else (1 if rank == 1 else -1)
-			_change_money(player_id, reward, "leg_bet", events)
-			events.append(CamelEvent.new(CamelEvent.LEG_SCORING, {"player_id": player_id, "source": "leg_bet", "camel": ticket["camel"], "reward": reward}))
+			var item_money_before := int(player["money"])
+			_change_money(player_id, reward, "leg_bet", scoring_events)
+			var applied_reward := int(player["money"]) - item_money_before
+			running_total += applied_reward
+			betting_cards.append({
+				"card_id": "%s_leg_%d_%d" % [player_id, state.leg_number, ticket_index],
+				"color": str(ticket["camel"]),
+				"printed_value": int(ticket["value"]),
+				"value": applied_reward,
+				"running_total": running_total,
+				"money_after": int(player["money"]),
+			})
+			scoring_events.append(CamelEvent.new(CamelEvent.LEG_SCORING, {"player_id": player_id, "source": "leg_bet", "camel": ticket["camel"], "reward": applied_reward}))
+			ticket_index += 1
 		var pyramid_reward := int(player["pyramid_tickets"])
+		var applied_dice_reward := 0
 		if pyramid_reward > 0:
-			_change_money(player_id, pyramid_reward, "pyramid", events)
-			events.append(CamelEvent.new(CamelEvent.LEG_SCORING, {"player_id": player_id, "source": "pyramid", "reward": pyramid_reward}))
+			var dice_money_before := int(player["money"])
+			_change_money(player_id, pyramid_reward, "pyramid", scoring_events)
+			applied_dice_reward = int(player["money"]) - dice_money_before
+			running_total += applied_dice_reward
+			scoring_events.append(CamelEvent.new(CamelEvent.LEG_SCORING, {"player_id": player_id, "source": "pyramid", "reward": applied_dice_reward}))
+		scoring_breakdowns.append({
+			"player_id": player_id,
+			"player_name": str(player["name"]),
+			"money_before": money_before,
+			"betting_cards": betting_cards,
+			"card_delta": running_total - applied_dice_reward,
+			"dice_roll_count": pyramid_reward,
+			"dice_reward": applied_dice_reward,
+			"dice_running_total": running_total,
+			"round_delta": running_total,
+			"money_after": int(player["money"]),
+		})
+
+	# LEG_ENDED is deliberately placed before the legacy money events.  The visual
+	# layer consumes this authoritative breakdown as one uninterrupted sequence;
+	# MONEY_CHANGED remains in the stream for state/event compatibility only.
+	events.append(CamelEvent.new(CamelEvent.LEG_ENDED, {
+		"leg": state.leg_number,
+		"order": order.duplicate(),
+		"dice_history": state.dice_history.duplicate(true),
+		"scoring": scoring_breakdowns,
+	}))
+	events.append_array(scoring_events)
 
 	# In 6+ games, each partner independently copies the best positive ticket reward.
 	if state.players.size() >= 6:

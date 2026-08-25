@@ -6,6 +6,7 @@ signal interaction_mode_changed(target_type: String, valid_ids: Array)
 signal chat_send_requested(text: String)
 signal sound_requested(cue: String)
 signal overview_requested
+signal leave_game_requested
 
 const CAMEL_NAMES := {"blue": "파랑", "yellow": "노랑", "green": "초록", "red": "빨강", "purple": "보라"}
 const CAMEL_UI_COLORS := {"blue": Color("4f91ff"), "yellow": Color("e8bd3f"), "green": Color("48bd70"), "red": Color("e56861"), "purple": Color("9a72d5")}
@@ -45,6 +46,8 @@ var _selected_space := -1
 var _chat_button: Button
 var _emote_button: Button
 var _overview_button: Button
+var _settings_button: Button
+var _settings_panel: PanelContainer
 var _chat_badge: Label
 var _chat_panel: PanelContainer
 var _chat_log: RichTextLabel
@@ -114,6 +117,7 @@ func _build_top_hud() -> void:
 	_hud_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.add_child(_hud_layer)
 	_build_right_rail()
+	_build_settings_panel()
 	_build_result_panel()
 
 
@@ -537,11 +541,16 @@ func _build_right_rail() -> void:
 	_root.add_child(_emote_button)
 	_overview_button = _rail_button(HOME_ICON, "보드 전체 보기", func(): overview_requested.emit())
 	_root.add_child(_overview_button)
+	_settings_button = _rail_button(null, "설정", _toggle_settings)
+	_settings_button.text = "⚙"
+	_settings_button.add_theme_font_size_override("font_size", 24)
+	_root.add_child(_settings_button)
 
 
 func _rail_button(icon_texture: Texture2D, hint: String, callback: Callable) -> Button:
 	var button := Button.new()
-	button.icon = icon_texture
+	if icon_texture != null:
+		button.icon = icon_texture
 	button.tooltip_text = hint
 	button.expand_icon = true
 	button.custom_minimum_size = Vector2(48, 38)
@@ -607,6 +616,40 @@ func _build_emote_panel() -> void:
 	_root.add_child(_emote_panel)
 
 
+func _build_settings_panel() -> void:
+	_settings_panel = PanelContainer.new()
+	_settings_panel.visible = false
+	_settings_panel.z_index = 80
+	_settings_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	_settings_panel.add_theme_stylebox_override("panel", _panel_style(Color("fff4d8"), 0.99, Color("d99b5c"), 3, 22))
+	var margin := MarginContainer.new()
+	for side in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
+		margin.add_theme_constant_override(side, 18)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 10)
+	var title := Label.new()
+	title.text = "설정"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_color_override("font_color", Color("493528"))
+	title.add_theme_font_size_override("font_size", 22)
+	box.add_child(title)
+	var description := Label.new()
+	description.text = "게임에서 나가면 홈 화면으로 돌아갑니다."
+	description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	description.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	description.add_theme_color_override("font_color", Color("765b48"))
+	box.add_child(description)
+	var leave_button := _online_button("게임 나가기", _confirm_leave_game, Color("d9655b"))
+	leave_button.custom_minimum_size.y = 48
+	box.add_child(leave_button)
+	var close_button := _online_button("계속 플레이", _hide_settings, Color("58a796"))
+	close_button.custom_minimum_size.y = 44
+	box.add_child(close_button)
+	margin.add_child(box)
+	_settings_panel.add_child(margin)
+	_root.add_child(_settings_panel)
+
+
 func _build_result_panel() -> void:
 	_result_panel = PanelContainer.new()
 	_result_panel.visible = false
@@ -665,6 +708,22 @@ func _toggle_chat() -> void:
 		_unread = 0
 		_chat_badge.visible = false
 		_chat_input.grab_focus()
+
+
+func _toggle_settings() -> void:
+	_settings_panel.visible = not _settings_panel.visible
+	if _settings_panel.visible:
+		_chat_panel.visible = false
+		_emote_panel.visible = false
+
+
+func _confirm_leave_game() -> void:
+	_settings_panel.visible = false
+	leave_game_requested.emit()
+
+
+func _hide_settings() -> void:
+	_settings_panel.visible = false
 
 
 func _send_chat() -> void:
@@ -753,8 +812,9 @@ func _apply_responsive_layout() -> void:
 		_chat_button.position = Vector2(viewport_size.x - 56 * ui_scale, rail_y)
 		_emote_button.position = Vector2(viewport_size.x - 56 * ui_scale, rail_y + 44 * ui_scale)
 		_overview_button.position = Vector2(viewport_size.x - 56 * ui_scale, rail_y + 88 * ui_scale)
+		_settings_button.position = Vector2(viewport_size.x - 56 * ui_scale, rail_y + 132 * ui_scale)
 		_chat_badge.position = Vector2(viewport_size.x - 18 * ui_scale, rail_y - 4 * ui_scale)
-		for rail_button in [_chat_button, _emote_button, _overview_button]:
+		for rail_button in [_chat_button, _emote_button, _overview_button, _settings_button]:
 			rail_button.custom_minimum_size = Vector2(46, 46) * ui_scale
 	if _chat_panel != null:
 		_chat_panel.position = Vector2(pad, viewport_size.y * 0.57)
@@ -772,3 +832,7 @@ func _apply_responsive_layout() -> void:
 		_result_title.add_theme_font_size_override("font_size", int(28 * ui_scale))
 		_result_reason.add_theme_font_size_override("font_size", int(13 * ui_scale))
 		_result_label.add_theme_font_size_override("font_size", int(19 * ui_scale))
+	if _settings_panel != null:
+		var settings_size := Vector2(minf(330.0 * ui_scale, viewport_size.x - pad * 2.0), 230.0 * ui_scale)
+		_settings_panel.position = (viewport_size - settings_size) * 0.5
+		_settings_panel.size = settings_size

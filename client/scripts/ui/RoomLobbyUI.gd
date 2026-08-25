@@ -3,6 +3,7 @@ extends CanvasLayer
 
 signal start_requested(fill_cpu: bool)
 signal cpu_count_requested(count: int)
+signal leave_requested
 
 @onready var root: Control = $Root
 @onready var _root: Control = $Root # Compatibility for existing flow diagnostics.
@@ -30,6 +31,7 @@ func _ready() -> void:
 	create_tween().tween_property(root, "modulate:a", 1.0, 0.3)
 	for index in slots.size():
 		slots[index].set_slot(index, {})
+	_build_settings()
 
 
 func update_lobby(payload: Dictionary, local_player_id: String) -> void:
@@ -58,3 +60,60 @@ func show_game() -> void:
 func _copy_room_code() -> void:
 	DisplayServer.clipboard_set(_room_code)
 	toast.show_message("방 코드 복사 완료!")
+
+
+func _build_settings() -> void:
+	var settings_button := Button.new()
+	settings_button.text = "⚙ 설정"
+	settings_button.tooltip_text = "방 설정"
+	settings_button.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	settings_button.position = Vector2(-138, 18)
+	settings_button.size = Vector2(120, 54)
+	root.add_child(settings_button)
+	var panel := PanelContainer.new()
+	panel.name = "LeaveRoomPanel"
+	panel.visible = false
+	panel.z_index = 100
+	panel.set_anchors_preset(Control.PRESET_CENTER)
+	panel.position = Vector2(-270, -175)
+	panel.size = Vector2(540, 350)
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color("fff4d8")
+	style.border_color = Color("d99b5c")
+	style.set_border_width_all(4)
+	style.set_corner_radius_all(28)
+	style.shadow_color = Color(0.08, 0.04, 0.02, 0.4)
+	style.shadow_size = 14
+	panel.add_theme_stylebox_override("panel", style)
+	var margin := MarginContainer.new()
+	for side in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
+		margin.add_theme_constant_override(side, 28)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 16)
+	var title := Label.new()
+	title.text = "설정"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 36)
+	box.add_child(title)
+	var guide := Label.new()
+	guide.text = "현재 방에서 나가 홈으로 돌아갈까요?"
+	guide.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	guide.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	guide.add_theme_font_size_override("font_size", 24)
+	box.add_child(guide)
+	var leave_button := Button.new()
+	leave_button.text = "게임 나가기"
+	leave_button.custom_minimum_size.y = 72
+	leave_button.add_theme_font_size_override("font_size", 28)
+	leave_button.pressed.connect(func(): panel.visible = false; leave_requested.emit())
+	box.add_child(leave_button)
+	var cancel_button := Button.new()
+	cancel_button.text = "계속 기다리기"
+	cancel_button.custom_minimum_size.y = 60
+	cancel_button.add_theme_font_size_override("font_size", 24)
+	cancel_button.pressed.connect(func(): panel.visible = false)
+	box.add_child(cancel_button)
+	margin.add_child(box)
+	panel.add_child(margin)
+	root.add_child(panel)
+	settings_button.pressed.connect(func(): panel.visible = not panel.visible)

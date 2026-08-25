@@ -3,6 +3,7 @@ extends Node
 signal connection_status_changed(status: String)
 signal room_created(payload: Dictionary)
 signal room_joined(payload: Dictionary)
+signal room_left(payload: Dictionary)
 signal player_joined(payload: Dictionary)
 signal player_left(player_id: String)
 signal player_state(payload: Dictionary)
@@ -22,6 +23,7 @@ var _reconnect_elapsed := 0.0
 var room_code := ""
 var player_id := ""
 var reconnect_token := ""
+var _leave_pending := false
 
 func _ready() -> void:
 	_load_session()
@@ -40,6 +42,9 @@ func connect_to_server() -> void:
 		_last_state = WebSocketPeer.STATE_CLOSED
 		connection_status_changed.emit("Error")
 		server_error.emit("CONNECT_FAILED", error_string(result))
+
+func is_connected_to_server() -> bool:
+	return _socket.get_ready_state() == WebSocketPeer.STATE_OPEN
 
 func _process(delta: float) -> void:
 	_socket.poll()
@@ -80,6 +85,20 @@ func join_room(room_code: String, nickname: String) -> void:
 		"room_code": room_code.strip_edges().to_upper(),
 		"nickname": nickname,
 	})
+
+func leave_room() -> void:
+	var payload := {"room_code": room_code, "player_id": player_id}
+	# Clear persistent state before the network round-trip. Even if the tab closes
+	# immediately afterward, the next launch must show Home instead of reconnecting.
+	_clear_session()
+	_leave_pending = true
+	# Leaving is a local navigation action as well as a server mutation. Return to
+	# Home immediately instead of trapping the user behind a network round-trip.
+	room_left.emit(payload)
+	if _socket.get_ready_state() == WebSocketPeer.STATE_OPEN:
+		send_message(Protocol.LEAVE_ROOM, payload)
+	else:
+		_leave_pending = false
 
 func send_player_input(direction: Vector2, sequence: int) -> void:
 	send_message(Protocol.PLAYER_INPUT, {
@@ -128,6 +147,12 @@ func _handle_packet(text: String) -> void:
 		Protocol.ROOM_JOINED:
 			_remember_session(payload)
 			room_joined.emit(payload)
+		Protocol.ROOM_LEFT:
+			var was_requested_locally := _leave_pending
+			_leave_pending = false
+			_clear_session()
+			if not was_requested_locally:
+				room_left.emit(payload)
 		Protocol.PLAYER_JOINED:
 			player_joined.emit(payload)
 		Protocol.PLAYER_LEFT:
@@ -154,11 +179,28 @@ func _handle_packet(text: String) -> void:
 			pass
 		Protocol.ERROR:
 			var error_code := str(payload.get("code", "ERROR"))
+			# A cached client can briefly meet an older Render instance that does
+			# not yet understand LEAVE_ROOM. The local session is already cleared;
+			# replace the socket so the legacy server also releases its room context,
+			# and suppress its developer-facing UNKNOWN_TYPE message.
+			if _leave_pending and error_code == "UNKNOWN_TYPE":
+				_leave_pending = false
+				_restart_connection_after_legacy_leave()
+				return
 			if error_code == "RECONNECT_FAILED" or (error_code == "ROOM_NOT_FOUND" and not reconnect_token.is_empty()):
 				_clear_session()
 			server_error.emit(error_code, str(payload.get("message", "Unknown error")))
 		_:
 			server_error.emit("UNKNOWN_TYPE", "Unknown server message: %s" % type)
+
+
+func _restart_connection_after_legacy_leave() -> void:
+	if _socket.get_ready_state() == WebSocketPeer.STATE_OPEN:
+		_socket.close(1000, "leave room compatibility")
+	_socket = WebSocketPeer.new()
+	_last_state = WebSocketPeer.STATE_CLOSED
+	_reconnect_elapsed = 0.0
+	call_deferred("connect_to_server")
 
 func _remember_session(payload: Dictionary) -> void:
 	room_code = str(payload.get("room_code", room_code))

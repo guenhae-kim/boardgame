@@ -25,6 +25,7 @@ func _ready() -> void:
 	lobby_ui.visible = false; online_ui.visible = false
 	lobby_ui.start_requested.connect(func(fill: bool): _network.start_game(fill))
 	lobby_ui.cpu_count_requested.connect(func(count: int): _network.set_cpu_count(count))
+	lobby_ui.leave_requested.connect(_network.leave_room)
 	_network.connect("lobby_state", _on_lobby_state)
 	_network.connect("game_authority_requested", _on_authority_request)
 	_network.connect("game_action_requested", _on_action_request)
@@ -234,7 +235,9 @@ func _play_event(event: CamelEvent) -> void:
 	if event.type == CamelEvent.DIE_ROLLED:
 		_set_phase(FlowPhase.ROLLING_DICE, "%s 주사위가 빠르게 굴러갑니다." % event.data.get("die", ""), false)
 		await camera_director.show_dice(dice.global_position, 0.28)
+		sound_manager.play("dice_throw")
 		await dice.play_roll(str(event.data.get("die", "blue")), int(event.data.get("value", 1)), 2.25)
+		sound_manager.play("dice_final")
 	if event.type == "ACTION_REJECTED":
 		if str(event.data.get("player_id", "")) == local_player_id: online_ui.show_error(str(event.data.get("error", "행동할 수 없습니다.")))
 		await get_tree().create_timer(0.15).timeout; return

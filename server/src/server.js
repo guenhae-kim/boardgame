@@ -191,6 +191,18 @@ export function createGameServer(options = {}) {
           return;
         }
 
+        if (type === MessageType.LEAVE_ROOM) {
+          const { room, playerId } = socket.context;
+          if (!room || !playerId) throw new ProtocolError("NOT_IN_ROOM", "Join a room first");
+          room.leave(playerId, socket);
+          socket.context = { ...socket.context, room: null, playerId: null };
+          send(socket, MessageType.ROOM_LEFT, { room_code: room.code, player_id: playerId });
+          room.broadcast(MessageType.PLAYER_LEFT, { player_id: playerId, reconnecting: false });
+          room.broadcastLobby();
+          roomManager.removeIfEmpty(room);
+          return;
+        }
+
         if (type === MessageType.PLAYER_INPUT) {
           const { room, playerId } = socket.context;
           if (!room || !playerId) throw new ProtocolError("NOT_IN_ROOM", "Join a room first");

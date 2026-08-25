@@ -106,6 +106,41 @@ test("two players can join, move, remain room-isolated, and leave", async () => 
   await server.close();
 });
 
+test("voluntary leave removes the lobby slot and invalidates reconnect", async () => {
+  const server = createGameServer();
+  await new Promise((resolve) => server.httpServer.listen(0, "127.0.0.1", resolve));
+  const { port } = server.httpServer.address();
+  const url = `ws://127.0.0.1:${port}/ws`;
+  const host = await connect(url);
+  const guest = await connect(url);
+  host.socket.send(encode(MessageType.CREATE_ROOM, { nickname: "Host" }));
+  const created = await host.next(MessageType.ROOM_CREATED);
+  await host.next(MessageType.LOBBY_STATE);
+  guest.socket.send(encode(MessageType.JOIN_ROOM, { nickname: "Guest", room_code: created.payload.room_code }));
+  const joined = await guest.next(MessageType.ROOM_JOINED);
+  await host.next(MessageType.PLAYER_JOINED);
+  await host.next(MessageType.LOBBY_STATE);
+
+  guest.socket.send(encode(MessageType.LEAVE_ROOM));
+  const leftAck = await guest.next(MessageType.ROOM_LEFT);
+  assert.equal(leftAck.payload.player_id, joined.payload.player_id);
+  const leftBroadcast = await host.next(MessageType.PLAYER_LEFT);
+  assert.equal(leftBroadcast.payload.player_id, joined.payload.player_id);
+  assert.equal(leftBroadcast.payload.reconnecting, false);
+  const lobby = await host.next(MessageType.LOBBY_STATE);
+  assert.equal(lobby.payload.players.length, 1);
+
+  guest.socket.send(encode(MessageType.RECONNECT, {
+    room_code: created.payload.room_code,
+    reconnect_token: joined.payload.reconnect_token,
+  }));
+  const rejected = await guest.next(MessageType.ERROR);
+  assert.equal(rejected.payload.code, "RECONNECT_FAILED");
+  host.socket.close();
+  guest.socket.close();
+  await server.close();
+});
+
 test("host authority, CPU lobby, private state routing, action order, and reconnect", async () => {
   const server = createGameServer();
   await new Promise((resolve) => server.httpServer.listen(0, "127.0.0.1", resolve));

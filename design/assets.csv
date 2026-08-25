@@ -25,4 +25,8 @@ car_npc,Subtle moving city decoration,Imported GLB + Godot TSCN,"Kenney toy car 
 traffic_light,Timed background signal,Imported GLB + Godot TSCN,"Kenney road-kit signal with lightweight emissive state indicators",2.2 hero-units tall,STYLE_FORMULA_V2,https://kenney.nl/assets/city-kit-roads
 chat_sheet,Room chat drawer and quick reactions,Godot Control,"Right-edge chat button with 40-percent bottom sheet and quick emotes",mobile bottom sheet,STYLE_FORMULA_V1,reference_media[0]
 reaction_bubble,Short board-space player reaction,Godot Label3D,"Rounded two-second speech bubble anchored near the reacting piece",1.2 hero-units wide,STYLE_FORMULA_V1,reference_media[0]
-game_sfx,Existing runtime tabletop feedback,Generated audio,"Soft pop tok boing coin turn timer and round cues",short one-shots,STYLE_FORMULA_V1,generate
+ui_foley,Quiet physical UI feedback,OGG audio,"Two short Kenney UI tap variations; no electronic oscillator",short one-shots,STYLE_FORMULA_V2,https://kenney.nl/assets/ui-pack
+card_foley,Card select slide and placement feedback,OGG audio,"Two select two slide and four board-impact variations",short one-shots,STYLE_FORMULA_V2,https://kenney.nl/assets/casino-audio
+dice_foley,Physics-driven dice shake impacts and final settle,OGG audio,"Two shake and two variants at each soft medium hard final tier",short one-shots,STYLE_FORMULA_V2,https://kenney.nl/assets/casino-audio
+piece_foley,Plush-like hop landing and stack feedback,OGG audio,"Carpet and soft-object physical impacts with no animal voice",short one-shots,STYLE_FORMULA_V2,https://kenney.nl/assets/impact-sounds
+coin_foley,Small metal and tabletop token feedback,OGG audio,"Two coin-gain and two token-spend variations",short one-shots,STYLE_FORMULA_V2,https://kenney.nl/assets/impact-sounds

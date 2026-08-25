@@ -81,6 +81,28 @@ export class Room {
     return player;
   }
 
+  leave(playerId, socket) {
+    const player = this.players.get(playerId);
+    if (!player || player.isCpu || player.socket !== socket) {
+      throw new ProtocolError("NOT_IN_ROOM", "Player is not in this room");
+    }
+    if (this.started) {
+      // Keep the authoritative seat so turn order/state projections remain
+      // stable, but invalidate the token so a deliberate leave can never be
+      // mistaken for a temporary disconnect/reconnect.
+      this.markDisconnected(playerId, socket);
+      player.reconnectToken = randomUUID();
+    } else {
+      this.pendingReadyPlayers.delete(playerId);
+      this.players.delete(playerId);
+      if (this.hostPlayerId === playerId) {
+        const nextHost = [...this.players.values()].find((candidate) => !candidate.isCpu && candidate.connected);
+        this.hostPlayerId = nextHost?.id || "";
+      }
+    }
+    return player;
+  }
+
   migrateHost() {
     const nextHost = [...this.players.values()].find((candidate) => !candidate.isCpu && candidate.connected);
     if (!nextHost || nextHost.id === this.hostPlayerId) return;

@@ -3,6 +3,10 @@ extends Node3D
 
 signal movement_step_changed(world_position: Vector3)
 signal board_target_pressed(target_type: String, target_id: String)
+signal piece_hop_impact
+signal piece_land_impact
+signal piece_stack_impact
+signal card_place_impact
 
 const CAMEL_COLORS := {
 	"blue": Color("3887ff"), "yellow": Color("ffd447"), "green": Color("43c86f"),
@@ -150,6 +154,7 @@ func play_prediction_card(data: Dictionary) -> void:
 	tween.tween_property(card, "global_position", target, 0.48)
 	tween.parallel().tween_property(card, "rotation", Vector3(0, randf_range(-0.12, 0.12), 0), 0.48)
 	await tween.finished
+	card_place_impact.emit()
 	_prediction_cards[bet_type].append(card)
 
 
@@ -164,6 +169,7 @@ func play_spectator_placed(data: Dictionary) -> void:
 	tween.set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
 	tween.tween_property(token, "position", target, 0.18)
 	await tween.finished
+	card_place_impact.emit()
 	token.queue_free()
 
 
@@ -214,6 +220,7 @@ func play_move(data: Dictionary) -> void:
 			targets.append(piece_position(step, level))
 		await _move_group(moving_ids, targets, 0.3 if is_last and base_level > 0 else 0.22, 1.0 if is_last and base_level > 0 else 0.32)
 		step += direction
+	piece_land_impact.emit()
 	for camel_id in moving_ids:
 		await (piece_visuals[str(camel_id)] as CamelPieceVisual).play_land()
 
@@ -234,6 +241,7 @@ func play_stack(data: Dictionary) -> void:
 	var stack := data.get("bottom_to_top", []) as Array
 	if stack.size() < 2:
 		return
+	piece_stack_impact.emit()
 	for index in stack.size():
 		var piece := piece_visuals[str(stack[index])] as CamelPieceVisual
 		if index < stack.size() - 1:
@@ -282,6 +290,7 @@ func _move_group(piece_ids: Array, targets: Array, duration: float, jump_height:
 		var piece := piece_visuals[str(piece_ids[index])] as CamelPieceVisual
 		down_tween.tween_property(piece, "position", targets[index], duration * 0.5)
 	await down_tween.finished
+	piece_hop_impact.emit()
 
 
 func _refresh_tiles(state: CamelGameState) -> void:

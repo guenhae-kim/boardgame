@@ -37,6 +37,7 @@ var _partner_button: Button
 var _player_cards: Dictionary = {}
 var _money_labels: Dictionary = {}
 var _round_banner: PanelContainer
+var _round_scoring_ui: CamelRoundScoringUI
 var _presented_player_id := ""
 
 
@@ -139,6 +140,13 @@ func show_round_complete(leg_number: int) -> void:
 	_round_banner.visible = false
 
 
+func show_round_scoring(leg_number: int, breakdowns: Array) -> void:
+	if _round_scoring_ui == null:
+		await show_round_complete(leg_number)
+		return
+	await _round_scoring_ui.play_round_scoring(leg_number, breakdowns)
+
+
 func show_error(message: String) -> void:
 	error_label.text = message
 	error_label.visible = not message.is_empty()
@@ -162,6 +170,13 @@ func _build() -> void:
 	_build_action_bar()
 	_build_debug_panel()
 	_build_round_banner()
+	_build_round_scoring_ui()
+
+
+func _build_round_scoring_ui() -> void:
+	var scene := load("res://scenes/ui/RoundScoringUI.tscn") as PackedScene
+	_round_scoring_ui = scene.instantiate() as CamelRoundScoringUI
+	_root.add_child(_round_scoring_ui)
 
 
 func _build_top_hud() -> void:

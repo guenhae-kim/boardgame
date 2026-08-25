@@ -24,6 +24,13 @@ func _run() -> void:
 	]
 	online.start_room({"room_code": "TEST", "player_id": "player_1", "lobby": {"room_code": "TEST", "host_player_id": "player_1", "max_slots": 4, "players": roster}})
 	_check(online.lobby_ui.visible, "online room opens the four-slot lobby")
+	_check(online.lobby_ui.has_signal("leave_requested"), "room lobby exposes an explicit leave action")
+	var leave_requested := [false]
+	online.online_ui.leave_game_requested.connect(func(): leave_requested[0] = true)
+	online.online_ui._settings_button.pressed.emit()
+	_check(online.online_ui._settings_panel.visible, "game settings button opens the leave panel")
+	online.online_ui._confirm_leave_game()
+	_check(bool(leave_requested[0]), "game leave confirmation emits one explicit leave request")
 	var rules := CamelGameRules.new(["Host", "Friend", "CPU 1", "CPU 2"], 777)
 	for index in roster.size():
 		var player := rules.state.players[index] as Dictionary

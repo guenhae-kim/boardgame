@@ -9,7 +9,42 @@
 
 ## Sound effects
 
-No third-party sound files are included. Current tabletop sound effects are generated at runtime by `SoundManager.gd` from short synthesized wave/noise envelopes, so there is no external audio license or attribution requirement. They are placeholders designed to be replaceable cue-by-cue later.
+All sound files below are original Kenney OGG files used as short one-shots. No AI-generated audio, runtime oscillator, or synthesized placeholder sound is used.
+
+### Kenney Casino Audio
+
+- Official URL: https://kenney.nl/assets/casino-audio
+- Author: Kenney
+- License: Creative Commons Zero (CC0 1.0), commercial use permitted
+- Local license: `client/assets/audio/sfx/licenses/KENNEY_CASINO_AUDIO_CC0.txt`
+- `card-slide-1/2.ogg` → `cards/card_select_01/02.ogg` (hand card selection)
+- `card-fan-1/2.ogg` → `cards/card_slide_01/02.ogg` (card flight/slide)
+- `card-place-1..4.ogg` → `cards/card_place_01..04.ogg` (card landing on board)
+- `dice-shake-1/2.ogg` → `dice/dice_shake_01/02.ogg` (roll start)
+- `chip-lay-1/2.ogg` → `coins/coin_spend_01/02.ogg` (token/coin spending)
+
+### Kenney Impact Sounds
+
+- Official URL: https://kenney.nl/assets/impact-sounds
+- Author: Kenney
+- License: Creative Commons Zero (CC0 1.0), commercial use permitted
+- Local license: `client/assets/audio/sfx/licenses/KENNEY_IMPACT_SOUNDS_CC0.txt`
+- `impactGeneric_light_000/001.ogg` → `dice/dice_hit_soft_01/02.ogg` (soft dice collision)
+- `impactWood_light_000/001.ogg` → `dice/dice_hit_medium_01/02.ogg` (medium dice collision)
+- `impactWood_medium_000/001.ogg` → `dice/dice_hit_hard_01/02.ogg` (hard dice collision)
+- `impactWood_medium_002/003.ogg` → `dice/dice_final_01/02.ogg` (final dice settlement)
+- `footstep_carpet_000..002.ogg` → `pieces/piece_hop_01..03.ogg` (soft plush-like hop contact)
+- `impactSoft_medium_000/001.ogg` → `pieces/piece_land_01/02.ogg` (piece landing)
+- `impactSoft_heavy_000/001.ogg` → `pieces/piece_stack_01/02.ogg` (soft stacked-piece impact)
+- `impactMetal_light_000/001.ogg` → `coins/coin_gain_01/02.ogg` (small metal token gain)
+
+### Kenney UI Pack
+
+- Official URL: https://kenney.nl/assets/ui-pack
+- Author: Kenney
+- License: Creative Commons Zero (CC0 1.0), commercial use permitted
+- Local license: `client/assets/third_party/kenney/ui/LICENSE.txt`
+- `Sounds/tap-a/b.ogg` → `ui/ui_tap_01/02.ogg` (quiet physical UI tap)
 
 ## Kenney City Kit (Roads)
 

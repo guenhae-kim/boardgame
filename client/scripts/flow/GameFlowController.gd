@@ -56,6 +56,10 @@ func _build_world() -> void:
 	add_child(dice)
 	sound_manager = CamelSoundManager.new(); add_child(sound_manager)
 	dice.collision_sound_requested.connect(sound_manager.play_collision)
+	board.piece_hop_impact.connect(func(): sound_manager.play("walk"))
+	board.piece_land_impact.connect(func(): sound_manager.play("land"))
+	board.piece_stack_impact.connect(func(): sound_manager.play("stack"))
+	board.card_place_impact.connect(func(): sound_manager.play("card_land"))
 	var light := DirectionalLight3D.new()
 	light.rotation_degrees = Vector3(-55, -25, 0)
 	light.shadow_enabled = true
@@ -134,7 +138,9 @@ func _run_roll(forced_die: String = "", forced_value: int = 0, throw_strength: f
 	_set_phase(FlowPhase.ROLLING_DICE, "%s가 피라미드 안의 주사위를 섞습니다. 강도 %.1f" % [_acting_player_name, throw_strength], false)
 	ui.add_log("%s가 피라미드를 작동합니다. 남은 주사위 중 하나를 추첨합니다." % _acting_player_name, "ffd166")
 	await camera_director.show_dice(dice.global_position)
+	sound_manager.play("dice_throw")
 	var rolled_value := await dice.play_roll(die_id, forced_value, throw_strength)
+	sound_manager.play("dice_final")
 	ui.add_log("피라미드에서 나온 주사위: %s / 결과 %d" % [die_id, rolled_value], "7ee7ff")
 	rules.force_next_roll(die_id, rolled_value)
 	_set_phase(FlowPhase.RESOLVING_ACTION, "주사위 결과를 규칙에 적용합니다.", false)
@@ -208,6 +214,11 @@ func _play_event(event: CamelEvent) -> void:
 			await camera_director.focus_space(board.track_point(int(event.data["space"])), 0.3)
 			await board.play_spectator_placed(event.data)
 		CamelEvent.MONEY_CHANGED:
+			# Leg card/dice rewards are presented by LEG_ENDED's authoritative
+			# per-player breakdown. Replaying them here would show the same reward
+			# twice and could start coin effects behind the scoring overlay.
+			if str(event.data.get("reason", "")) in ["leg_bet", "pyramid"]:
+				return
 			_set_phase(FlowPhase.PLAYING_EFFECT_ANIMATION, "%s의 EP: %d → %d" % [event.data["player_id"], event.data["before"], event.data["after"]], false)
 			await ui.play_money_change(str(event.data["player_id"]), int(event.data["after"]) - int(event.data["before"]))
 			await get_tree().create_timer(0.22).timeout
@@ -226,9 +237,15 @@ func _play_event(event: CamelEvent) -> void:
 			# The fifth result belongs on the physical history tray before scoring clears it.
 			await _place_pending_die_history()
 			_set_phase(FlowPhase.ROUND_END, "%d구간이 끝났습니다. 정산합니다." % event.data["leg"], false)
-			await camera_director.show_board(0.35)
-			await ui.show_round_complete(int(event.data["leg"]))
-			await get_tree().create_timer(0.55).timeout
+			# The next turn stays locked until overview and every scoring animation
+			# have completed. This also covers a finish-line roll, which has no
+			# TURN_ENDED event before final scoring.
+			await camera_director.show_board(0.48)
+			await get_tree().create_timer(0.5).timeout
+			if ui.has_method("show_round_scoring"):
+				await ui.show_round_scoring(int(event.data["leg"]), event.data.get("scoring", []) as Array)
+			else:
+				await ui.show_round_complete(int(event.data["leg"]))
 			await board.clear_dice_history()
 		CamelEvent.TURN_ENDED:
 			await _place_pending_die_history()
@@ -240,6 +257,10 @@ func _play_event(event: CamelEvent) -> void:
 			await get_tree().create_timer(0.12).timeout
 		CamelEvent.GAME_END_TRIGGERED:
 			await _place_pending_die_history()
+		CamelEvent.LEG_SCORING:
+			# Already visualized from LEG_ENDED.scoring. Kept as a protocol event
+			# for compatibility and analytics, with no second presentation delay.
+			return
 		CamelEvent.GAME_ENDED:
 			_set_phase(FlowPhase.GAME_END, "최종 정산이 완료되었습니다.", false)
 			await get_tree().create_timer(0.7).timeout
@@ -249,12 +270,10 @@ func _play_event(event: CamelEvent) -> void:
 
 func _play_event_sound(event: CamelEvent) -> void:
 	match event.type:
-		CamelEvent.DIE_ROLLED: sound_manager.play("dice_throw")
-		CamelEvent.CAMEL_MOVED: sound_manager.play("walk")
-		CamelEvent.CAMELS_STACKED: sound_manager.play("stack")
-		CamelEvent.SPECTATOR_PLACED: sound_manager.play("card_land")
-		CamelEvent.LEG_BET_TAKEN, CamelEvent.FINAL_BET_PLACED: sound_manager.play("card_fly")
-		CamelEvent.MONEY_CHANGED: sound_manager.play("coin_gain" if int(event.data.get("after", 0)) >= int(event.data.get("before", 0)) else "coin_loss")
+		CamelEvent.SPECTATOR_PLACED, CamelEvent.LEG_BET_TAKEN, CamelEvent.FINAL_BET_PLACED: sound_manager.play("card_fly")
+		CamelEvent.MONEY_CHANGED:
+			if str(event.data.get("reason", "")) not in ["leg_bet", "pyramid"]:
+				sound_manager.play("coin_gain" if int(event.data.get("after", 0)) >= int(event.data.get("before", 0)) else "coin_loss")
 		CamelEvent.TURN_STARTED: sound_manager.play("turn")
 		CamelEvent.LEG_ENDED: sound_manager.play("round")
 		CamelEvent.GAME_ENDED: sound_manager.play("game")
