@@ -19,7 +19,7 @@ func setup(target_camera: Camera3D) -> void:
 
 func show_board(duration: float = 0.55) -> void:
 	state = CameraState.BOARD_OVERVIEW
-	camera.fov = 60.0 if _is_portrait() else 88.0
+	camera.fov = 55.0 if _is_portrait() else 80.0
 	var pose := _board_pose()
 	var target := (pose[1] as Vector3) + _overview_offset
 	var position := target + ((pose[0] as Vector3) - (pose[1] as Vector3)) * _overview_zoom
@@ -31,15 +31,15 @@ func _board_pose() -> Array:
 		# A slight diagonal top-down view turns the wide tabletop footprint into
 		# an almost square silhouette, using the tall mobile play area without
 		# cropping the prediction and betting zones at either side.
-		return [Vector3(3.0, 18.0, 3.0), Vector3(0, 0, 0.3)]
-	return [Vector3(0, 12.2, 14.2), Vector3(0, 0, -0.35)]
+		return [Vector3(2.6, 15.25, 3.2), Vector3(0, 0, 0.2)]
+	return [Vector3(0, 10.8, 12.8), Vector3(0, 0, -0.2)]
 
 
 func _apply_board_pose() -> void:
 	if camera == null:
 		return
 	var pose := _board_pose()
-	camera.fov = 60.0 if _is_portrait() else 88.0
+	camera.fov = 55.0 if _is_portrait() else 80.0
 	camera.global_transform = Transform3D(Basis.IDENTITY, pose[0]).looking_at(pose[1], Vector3.UP)
 
 

@@ -32,6 +32,8 @@ func _capture() -> void:
 	rules.state.dice_history = [{"die": "red", "camel": "red", "value": 3}, {"die": "blue", "camel": "blue", "value": 1}]
 	var server_time := int(Time.get_unix_time_from_system() * 1000.0)
 	online._on_game_update({"room_code": "K7DF", "game_sequence": 1, "actor_id": "", "events": [], "public_state": CamelGameProjection.public_state(rules.state), "private_state": CamelGameProjection.private_states(rules.state)["player_1"], "authority_state": rules.state.to_dict(), "game_busy": false, "server_time": server_time, "turn_deadline_ms": server_time + 43000})
+	if "--highlight" in OS.get_cmdline_user_args():
+		online.online_ui._select_card("red")
 	await online.camera_director.show_board(0.0)
 	await create_timer(1.5).timeout
 	var image := root.get_viewport().get_texture().get_image()

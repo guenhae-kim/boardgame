@@ -1,45 +1,43 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://scripts/environment/TrafficLight.gd" id="1"]
-[sub_resource type="BoxMesh" id="Pole"]
-size = Vector3(0.16, 1.8, 0.16)
-[sub_resource type="BoxMesh" id="Head"]
-size = Vector3(0.42, 0.9, 0.28)
+[ext_resource type="PackedScene" path="res://assets/third_party/kenney/city_roads/traffic-light.glb" id="2"]
+
 [sub_resource type="SphereMesh" id="Lamp"]
-radius = 0.1
-height = 0.2
-[sub_resource type="StandardMaterial3D" id="Dark"]
-albedo_color = Color(0.12, 0.15, 0.16, 1)
+radius = 0.075
+height = 0.15
+
 [sub_resource type="StandardMaterial3D" id="RedMat"]
-albedo_color = Color(0.9, 0.18, 0.14, 1)
-emission = Color(0.9, 0.18, 0.14, 1)
+albedo_color = Color(0.74, 0.08, 0.06, 1)
+emission = Color(0.95, 0.13, 0.08, 1)
+
 [sub_resource type="StandardMaterial3D" id="YellowMat"]
-albedo_color = Color(0.95, 0.72, 0.15, 1)
-emission = Color(0.95, 0.72, 0.15, 1)
+albedo_color = Color(0.85, 0.55, 0.05, 1)
+emission = Color(1, 0.71, 0.12, 1)
+
 [sub_resource type="StandardMaterial3D" id="GreenMat"]
-albedo_color = Color(0.2, 0.76, 0.38, 1)
-emission = Color(0.2, 0.76, 0.38, 1)
+albedo_color = Color(0.05, 0.6, 0.2, 1)
+emission = Color(0.12, 0.92, 0.36, 1)
 
 [node name="TrafficLight" type="Node3D"]
 script = ExtResource("1")
+
 [node name="ModelSlot" type="Node3D" parent="."]
-[node name="Pole" type="MeshInstance3D" parent="ModelSlot"]
-position = Vector3(0, 0.9, 0)
-mesh = SubResource("Pole")
-material_override = SubResource("Dark")
-[node name="Head" type="MeshInstance3D" parent="ModelSlot"]
-position = Vector3(0, 1.75, 0)
-mesh = SubResource("Head")
-material_override = SubResource("Dark")
+scale = Vector3(1.25, 1.25, 1.25)
+
+[node name="KenneySignal" parent="ModelSlot" instance=ExtResource("2")]
+
 [node name="Red" type="MeshInstance3D" parent="."]
-position = Vector3(0, 2.02, -0.15)
+position = Vector3(0, 2.06, -0.15)
 mesh = SubResource("Lamp")
 material_override = SubResource("RedMat")
+
 [node name="Yellow" type="MeshInstance3D" parent="."]
-position = Vector3(0, 1.76, -0.15)
+position = Vector3(0, 1.82, -0.15)
 mesh = SubResource("Lamp")
 material_override = SubResource("YellowMat")
+
 [node name="Green" type="MeshInstance3D" parent="."]
-position = Vector3(0, 1.5, -0.15)
+position = Vector3(0, 1.58, -0.15)
 mesh = SubResource("Lamp")
 material_override = SubResource("GreenMat")

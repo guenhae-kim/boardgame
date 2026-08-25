@@ -10,6 +10,7 @@ const CAMEL_COLORS := {
 	"black": Color("24262d"),
 }
 const PIECE_HEIGHT := 0.68
+const TARGET_ARROW := preload("res://assets/third_party/kenney/ui/target_arrow.png")
 
 var piece_visuals: Dictionary = {}
 var _tile_nodes: Array = []
@@ -21,11 +22,32 @@ var _history_nodes: Array = []
 var _history_slots: Array = []
 var _interaction_meshes: Dictionary = {}
 var _enabled_targets: Dictionary = {}
+var _interaction_base_scales: Dictionary = {}
+var _interaction_base_positions: Dictionary = {}
+var _interaction_markers: Dictionary = {}
+var _highlight_time := 0.0
 
 
 func _ready() -> void:
 	_build_board()
 	_build_pieces()
+	set_process(true)
+
+
+func _process(delta: float) -> void:
+	_highlight_time += delta
+	var pulse := 1.0 + sin(_highlight_time * 5.5) * 0.055
+	for key in _interaction_meshes:
+		var mesh := _interaction_meshes[key] as MeshInstance3D
+		var enabled := _enabled_targets.has(key)
+		var base_scale := _interaction_base_scales.get(key, Vector3.ONE) as Vector3
+		var base_position := _interaction_base_positions.get(key, mesh.position) as Vector3
+		mesh.scale = base_scale * (1.13 * pulse if enabled else 1.0)
+		mesh.position = base_position + (Vector3.UP * (0.14 + sin(_highlight_time * 5.5) * 0.05) if enabled else Vector3.ZERO)
+		var marker := _interaction_markers.get(key) as Sprite3D
+		if marker != null:
+			marker.visible = enabled
+			marker.position.y = 1.18 + sin(_highlight_time * 5.5) * 0.13
 
 
 func sync_state(state: CamelGameState) -> void:
@@ -93,8 +115,8 @@ func set_interaction(target_type: String = "", valid_ids: Array = []) -> void:
 		var material := mesh.material_override as StandardMaterial3D
 		var enabled := _enabled_targets.has(key)
 		material.emission_enabled = enabled
-		material.emission = material.albedo_color.lightened(0.28)
-		material.emission_energy_multiplier = 0.75 if enabled else 0.0
+		material.emission = material.albedo_color.lightened(0.18)
+		material.emission_energy_multiplier = 0.62 if enabled else 0.0
 
 
 func play_take_bet(data: Dictionary) -> void:
@@ -289,6 +311,18 @@ func _build_board() -> void:
 	center.position.y = -0.18
 	center.material_override = _material(Color("dfbd78"))
 	add_child(center)
+	# The former pyramid/glass enclosure is replaced by an open, low Dice Plaza.
+	var plaza := MeshInstance3D.new()
+	plaza.name = "DicePlaza"
+	var plaza_mesh := CylinderMesh.new()
+	plaza_mesh.top_radius = 2.8
+	plaza_mesh.bottom_radius = 2.95
+	plaza_mesh.height = 0.12
+	plaza_mesh.radial_segments = 32
+	plaza.mesh = plaza_mesh
+	plaza.position = Vector3(0, 0.02, 0)
+	plaza.material_override = _material(Color("f3ddb0"))
+	add_child(plaza)
 	for space in range(1, CamelGameState.TRACK_LENGTH + 1):
 		var node := MeshInstance3D.new()
 		var mesh := BoxMesh.new()
@@ -308,7 +342,6 @@ func _build_board() -> void:
 	_build_bet_stack_anchors()
 	_build_prediction_areas()
 	_build_history_area()
-	_build_scenery()
 
 
 func _build_pieces() -> void:
@@ -570,6 +603,17 @@ func _register_interaction(parent: Node3D, target_type: String, target_id: Strin
 		if source != null:
 			visual.material_override = source.duplicate()
 		_interaction_meshes[key] = visual
+		_interaction_base_scales[key] = visual.scale
+		_interaction_base_positions[key] = visual.position
+		var marker := Sprite3D.new()
+		marker.texture = TARGET_ARROW
+		marker.pixel_size = 0.045
+		marker.modulate = Color("fff1a1")
+		marker.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		marker.no_depth_test = true
+		marker.visible = false
+		parent.add_child(marker)
+		_interaction_markers[key] = marker
 	var area := Area3D.new()
 	area.input_ray_pickable = true
 	area.collision_layer = 4

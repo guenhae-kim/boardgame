@@ -9,6 +9,11 @@ signal overview_requested
 
 const CAMEL_NAMES := {"blue": "파랑", "yellow": "노랑", "green": "초록", "red": "빨강", "purple": "보라"}
 const CAMEL_UI_COLORS := {"blue": Color("4f91ff"), "yellow": Color("e8bd3f"), "green": Color("48bd70"), "red": Color("e56861"), "purple": Color("9a72d5")}
+const GAME_THEME := preload("res://themes/GameTheme.tres")
+const PLAYER_HUD_SCENE := preload("res://scenes/ui/PlayerHUD.tscn")
+const CARD_VIEW_SCENE := preload("res://scenes/ui/CardView.tscn")
+const DICE_BUTTON_SCENE := preload("res://scenes/ui/DiceButton.tscn")
+const HAND_UI_SCENE := preload("res://scenes/ui/HandUI.tscn")
 
 var _hud_layer: Control
 var _history_slots: Array[PanelContainer] = []
@@ -46,6 +51,7 @@ var _result_label: Label
 
 
 func _build_top_hud() -> void:
+	_root.theme = GAME_THEME
 	_top_panel = PanelContainer.new()
 	_top_panel.mouse_filter = Control.MOUSE_FILTER_PASS
 	_top_panel.add_theme_stylebox_override("panel", _panel_style(Color("253942"), 0.90, Color("f0c56b"), 2, 16))
@@ -100,7 +106,7 @@ func _build_top_hud() -> void:
 func _build_action_bar() -> void:
 	_action_panel = PanelContainer.new()
 	_action_panel.mouse_filter = Control.MOUSE_FILTER_PASS
-	_action_panel.add_theme_stylebox_override("panel", _panel_style(Color("fff2d3"), 0.91, Color("d99b5c"), 2, 18))
+	_action_panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
 	_root.add_child(_action_panel)
 	var margin := MarginContainer.new()
 	margin.add_theme_constant_override("margin_left", 8)
@@ -127,13 +133,13 @@ func _build_action_bar() -> void:
 	hand_line.alignment = BoxContainer.ALIGNMENT_CENTER
 	hand_line.add_theme_constant_override("separation", 3)
 	box.add_child(hand_line)
-	_roll_button = _online_button("주사위", func(): _submit(CamelAction.new(CamelAction.ROLL_DIE)), Color("e9a83c"))
-	_roll_button.custom_minimum_size = Vector2(58, 58)
-	hand_line.add_child(_roll_button)
-	_hand_row = HBoxContainer.new()
-	_hand_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	_hand_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	hand_line.add_child(_hand_row)
+	_roll_button = DICE_BUTTON_SCENE.instantiate() as Button
+	_roll_button.pressed.connect(func(): sound_requested.emit("ui"); _submit(CamelAction.new(CamelAction.ROLL_DIE)))
+	_root.add_child(_roll_button)
+	var hand_ui := HAND_UI_SCENE.instantiate() as MarginContainer
+	hand_ui.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hand_line.add_child(hand_ui)
+	_hand_row = hand_ui.get_node("HandCards") as HBoxContainer
 	_cancel_button = _online_button("취소", cancel_selection, Color("89989d"))
 	_cancel_button.custom_minimum_size = Vector2(50, 42)
 	hand_line.add_child(_cancel_button)
@@ -209,11 +215,12 @@ func refresh_state(rules: CamelGameRules) -> void:
 		var card := _player_cards[player_id] as PanelContainer
 		var money := _money_labels[player_id] as Label
 		money.text = "코인 %d" % int(player.get("money", 0))
-		var name_label := card.get_node("Margin/Box/Header/Name") as Label
+		var name_label := card.get_node("Margin/Box/Info/Header/Name") as Label
 		name_label.text = "%s%s" % ["나 · " if player_id == _local_player_id else "", str(player.get("name", player_id))]
-		(card.get_node("Margin/Box/Header/CPU") as Label).text = "CPU" if bool(player.get("is_cpu", false)) else ""
+		(card.get_node("Margin/Box/Info/Header/CPU") as Label).text = "CPU" if bool(player.get("is_cpu", false)) else ""
+		(card.get_node("Margin/Box/Portrait/Initial") as Label).text = str(player.get("name", "P")).left(1).to_upper()
 		(_hud_timer_labels[player_id] as Label).visible = current and _turn_deadline_ms > 0
-		card.add_theme_stylebox_override("panel", _panel_style(Color("fff1cf") if current else Color("25343d"), 0.94, PLAYER_COLORS[index], 3 if current else 1, 14))
+		card.add_theme_stylebox_override("panel", _panel_style(Color("324950") if current else Color("1d3037"), 0.84, PLAYER_COLORS[index], 3 if current else 1, 18))
 		card.modulate = Color.WHITE if bool(player.get("connected", true)) else Color(0.55, 0.55, 0.55, 0.72)
 		_rebuild_ticket_row(player_id, player.get("leg_tickets", []) as Array)
 	_show_result(state)
@@ -267,9 +274,11 @@ func cancel_selection() -> void:
 	interaction_mode_changed.emit("", [])
 	for button in _hand_cards.values():
 		(button as Button).scale = Vector2.ONE
+		(button as Button).position.y = float((button as Button).get_meta("fan_y", 0.0))
 		(button as Button).modulate = Color.WHITE
 	if _spectator_card != null:
 		_spectator_card.scale = Vector2.ONE
+		_spectator_card.position.y = float(_spectator_card.get_meta("fan_y", 0.0))
 	if _can_act:
 		_set_mode("bet", CamelGameState.RACE_CAMELS)
 
@@ -300,25 +309,35 @@ func _rebuild_hand() -> void:
 	_hand_row.add_theme_constant_override("separation", int(-10 * ui_scale))
 	for camel_value in _private_cards:
 		var camel := str(camel_value)
-		var card := Button.new()
-		card.text = "%s\n동물 카드" % CAMEL_NAMES.get(camel, camel)
-		card.custom_minimum_size = Vector2(62, 76) * ui_scale
-		card.pivot_offset = Vector2(31, 70) * ui_scale
+		var card := CARD_VIEW_SCENE.instantiate() as Button
+		card.text = str(CAMEL_NAMES.get(camel, camel))
+		card.tooltip_text = "%s 예측 카드" % CAMEL_NAMES.get(camel, camel)
+		card.custom_minimum_size = Vector2(76, 106) * ui_scale
+		card.pivot_offset = Vector2(38, 96) * ui_scale
 		card.add_theme_font_size_override("font_size", int(12 * ui_scale))
 		var color: Color = CAMEL_UI_COLORS.get(camel, Color.GRAY)
-		card.add_theme_stylebox_override("normal", _button_style(color, 1.0))
-		card.add_theme_stylebox_override("disabled", _button_style(color.darkened(0.25), 0.7))
+		card.self_modulate = color.lightened(0.12)
 		card.pressed.connect(func(): _select_card(camel))
 		_hand_row.add_child(card)
 		_hand_cards[camel] = card
-	_spectator_card = Button.new()
-	_spectator_card.text = "+1 / -1\n응원"
-	_spectator_card.custom_minimum_size = Vector2(64, 76) * ui_scale
-	_spectator_card.pivot_offset = Vector2(32, 70) * ui_scale
+	_spectator_card = CARD_VIEW_SCENE.instantiate() as Button
+	_spectator_card.text = "+1 / -1"
+	_spectator_card.tooltip_text = "응원 타일"
+	_spectator_card.custom_minimum_size = Vector2(76, 106) * ui_scale
+	_spectator_card.pivot_offset = Vector2(38, 96) * ui_scale
 	_spectator_card.add_theme_font_size_override("font_size", int(12 * ui_scale))
-	_spectator_card.add_theme_stylebox_override("normal", _button_style(Color("59ad9d"), 1.0))
+	_spectator_card.self_modulate = Color("65c6ae")
 	_spectator_card.pressed.connect(_select_spectator)
 	_hand_row.add_child(_spectator_card)
+	var cards := _hand_row.get_children()
+	var center := (cards.size() - 1) * 0.5
+	for index in cards.size():
+		var hand_card := cards[index] as Button
+		var distance := float(index) - center
+		hand_card.rotation = deg_to_rad(distance * 3.2)
+		var fan_y := absf(distance) * 3.5 * ui_scale
+		hand_card.position.y = fan_y
+		hand_card.set_meta("fan_y", fan_y)
 
 
 func _select_card(camel: String) -> void:
@@ -331,6 +350,8 @@ func _select_card(camel: String) -> void:
 		var selected := str(key) == camel
 		card.modulate = Color.WHITE if selected else Color(0.68, 0.68, 0.68, 0.82)
 		create_tween().tween_property(card, "scale", Vector2(1.12, 1.12) if selected else Vector2.ONE, 0.16).set_trans(Tween.TRANS_BACK)
+		var resting_y := float(card.get_meta("fan_y", 0.0))
+		create_tween().tween_property(card, "position:y", resting_y - 24.0 * _display_scale() if selected else resting_y, 0.16).set_trans(Tween.TRANS_BACK)
 	_set_mode("prediction", ["winner", "loser"])
 
 
@@ -340,6 +361,7 @@ func _select_spectator() -> void:
 	sound_requested.emit("card_select")
 	_selected_camel = ""
 	create_tween().tween_property(_spectator_card, "scale", Vector2(1.12, 1.12), 0.16).set_trans(Tween.TRANS_BACK)
+	create_tween().tween_property(_spectator_card, "position:y", float(_spectator_card.get_meta("fan_y", 0.0)) - 24.0 * _display_scale(), 0.16).set_trans(Tween.TRANS_BACK)
 	_set_mode("track", [])
 
 
@@ -376,49 +398,10 @@ func _rebuild_player_cards_if_needed(players: Array) -> void:
 	for index in players.size():
 		var player := players[index] as Dictionary
 		var player_id := str(player.get("id", ""))
-		var card := PanelContainer.new()
-		card.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var margin := MarginContainer.new()
-		margin.name = "Margin"
-		margin.add_theme_constant_override("margin_left", 8)
-		margin.add_theme_constant_override("margin_right", 8)
-		margin.add_theme_constant_override("margin_top", 5)
-		margin.add_theme_constant_override("margin_bottom", 5)
-		card.add_child(margin)
-		var box := VBoxContainer.new()
-		box.name = "Box"
-		box.add_theme_constant_override("separation", 1)
-		margin.add_child(box)
-		var header := HBoxContainer.new()
-		header.name = "Header"
-		box.add_child(header)
-		var face := Label.new()
-		face.text = ["●", "◆", "▲", "■"][index % 4]
-		face.modulate = PLAYER_COLORS[index]
-		header.add_child(face)
-		var name_label := Label.new()
-		name_label.name = "Name"
-		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-		header.add_child(name_label)
-		var cpu := Label.new()
-		cpu.name = "CPU"
-		cpu.add_theme_font_size_override("font_size", 9)
-		cpu.modulate = Color("9ecbd0")
-		header.add_child(cpu)
-		var info := HBoxContainer.new()
-		box.add_child(info)
-		var money := Label.new()
-		money.modulate = Color("ffd36b")
-		money.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		info.add_child(money)
-		var timer := Label.new()
-		timer.visible = false
-		info.add_child(timer)
-		var tickets := HBoxContainer.new()
-		tickets.name = "Tickets"
-		tickets.add_theme_constant_override("separation", -3)
-		box.add_child(tickets)
+		var card := PLAYER_HUD_SCENE.instantiate() as PanelContainer
+		var money := card.get_node("Margin/Box/Info/Stats/Money") as Label
+		var timer := card.get_node("Margin/Box/Info/Stats/Timer") as Label
+		var tickets := card.get_node("Margin/Box/Info/Tickets") as HBoxContainer
 		_hud_layer.add_child(card)
 		_player_cards[player_id] = card
 		_money_labels[player_id] = money
@@ -631,24 +614,29 @@ func _apply_responsive_layout() -> void:
 	_action_panel.offset_right = 0
 	_action_panel.offset_top = (-114 if portrait else -104) * ui_scale
 	_action_panel.offset_bottom = -6 * ui_scale
-	var hud_width := (140.0 if portrait else 176.0) * ui_scale
-	var hud_height := 74.0 * ui_scale
-	var lower_y := viewport_size.y - (202 if portrait else 112) * ui_scale
-	var positions := [Vector2(pad, 56), Vector2(viewport_size.x - hud_width - pad, 56), Vector2(pad, lower_y), Vector2(viewport_size.x - hud_width - pad, lower_y)]
+	var hud_width := (154.0 if portrait else 184.0) * ui_scale
+	var hud_height := 86.0 * ui_scale
+	var lower_y := viewport_size.y - (230 if portrait else 124) * ui_scale
+	var top_y := 60.0 * ui_scale
+	var positions := [Vector2(pad, top_y), Vector2(viewport_size.x - hud_width - pad, top_y), Vector2(pad, lower_y), Vector2(viewport_size.x - hud_width - pad, lower_y)]
 	var ids := _player_cards.keys()
 	for index in ids.size():
 		var card := _player_cards[ids[index]] as Control
 		card.position = positions[index % 4]
 		card.size = Vector2(hud_width, hud_height)
 		card.custom_minimum_size = card.size
+		var portrait_node := card.get_node_or_null("Margin/Box/Portrait") as TextureRect
+		if portrait_node != null:
+			portrait_node.custom_minimum_size = Vector2(56, 56) * ui_scale
 		for label_node in card.find_children("*", "Label", true, false):
 			var label := label_node as Label
-			label.add_theme_font_size_override("font_size", int((10 if label.name == "CPU" else 12) * ui_scale))
-	order_label.add_theme_font_size_override("font_size", int(14 * ui_scale))
+			label.add_theme_font_size_override("font_size", int((10 if label.name == "CPU" else 16) * ui_scale))
+	order_label.add_theme_font_size_override("font_size", int(16 * ui_scale))
 	_timer_label.add_theme_font_size_override("font_size", int(14 * ui_scale))
 	waiting_label.add_theme_font_size_override("font_size", int(13 * ui_scale))
-	_roll_button.custom_minimum_size = Vector2(58, 58) * ui_scale
-	_roll_button.add_theme_font_size_override("font_size", int(12 * ui_scale))
+	_roll_button.custom_minimum_size = Vector2(92, 92) * ui_scale
+	_roll_button.size = _roll_button.custom_minimum_size
+	_roll_button.position = Vector2(viewport_size.x - 106 * ui_scale, viewport_size.y - 224 * ui_scale)
 	_cancel_button.custom_minimum_size = Vector2(50, 42) * ui_scale
 	_cancel_button.add_theme_font_size_override("font_size", int(11 * ui_scale))
 	for slot in _history_slots:

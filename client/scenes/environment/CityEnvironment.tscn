@@ -1,70 +1,161 @@
-[gd_scene load_steps=10 format=3]
+[gd_scene load_steps=18 format=3]
 
 [ext_resource type="PackedScene" path="res://scenes/environment/CarNPC.tscn" id="1"]
 [ext_resource type="PackedScene" path="res://scenes/environment/TrafficLight.tscn" id="2"]
-[sub_resource type="BoxMesh" id="RoadMesh"]
-size = Vector3(22, 0.08, 2.2)
-[sub_resource type="StandardMaterial3D" id="RoadMat"]
-albedo_color = Color(0.24, 0.3, 0.32, 1)
+[ext_resource type="PackedScene" path="res://assets/third_party/kenney/city_roads/road-straight.glb" id="3"]
+[ext_resource type="PackedScene" path="res://assets/third_party/kenney/city_roads/road-crossing.glb" id="4"]
+[ext_resource type="PackedScene" path="res://assets/third_party/kenney/city_roads/light-curved.glb" id="5"]
+[ext_resource type="PackedScene" path="res://assets/third_party/kenney/city_commercial/building-a.glb" id="6"]
+[ext_resource type="PackedScene" path="res://assets/third_party/kenney/city_commercial/building-d.glb" id="7"]
+[ext_resource type="PackedScene" path="res://assets/third_party/kenney/city_commercial/building-g.glb" id="8"]
+[ext_resource type="PackedScene" path="res://assets/third_party/kenney/city_commercial/low-detail-building-wide-a.glb" id="9"]
+[ext_resource type="PackedScene" path="res://assets/third_party/kenney/city_commercial/detail-parasol-a.glb" id="10"]
+[ext_resource type="PackedScene" path="res://assets/third_party/kenney/toy_cars/tree.glb" id="11"]
+
+[sub_resource type="BoxMesh" id="GroundMesh"]
+size = Vector3(60, 0.18, 60)
+
+[sub_resource type="StandardMaterial3D" id="GroundMat"]
+albedo_color = Color(0.72, 0.78, 0.68, 1)
+roughness = 1.0
+
+[sub_resource type="BoxMesh" id="SidewalkMesh"]
+size = Vector3(30, 0.16, 3.2)
+
+[sub_resource type="StandardMaterial3D" id="SidewalkMat"]
+albedo_color = Color(0.83, 0.78, 0.67, 1)
 roughness = 0.95
-[sub_resource type="BoxMesh" id="BuildingMesh"]
-size = Vector3(2.3, 3.5, 2.0)
-[sub_resource type="StandardMaterial3D" id="CafeMat"]
-albedo_color = Color(0.82, 0.48, 0.34, 1)
-roughness = 0.82
-[sub_resource type="StandardMaterial3D" id="MintMat"]
-albedo_color = Color(0.34, 0.67, 0.63, 1)
-roughness = 0.82
+
 [sub_resource type="Curve3D" id="RoadCurve"]
 _data = {
-"points": PackedVector3Array(0, 0, 0, 0, 0, 0, -10, 0, -7.8, 0, 0, 0, 0, 0, 0, 10, 0, -7.8, 0, 0, 0, 0, 0, 0, 10, 0, 7.8, 0, 0, 0, 0, 0, 0, -10, 0, 7.8, 0, 0, 0, 0, 0, 0, -10, 0, -7.8),
+"points": PackedVector3Array(0, 0, 0, 0, 0, 0, -14, 0.1, -9.2, 0, 0, 0, 0, 0, 0, 14, 0.1, -9.2, 0, 0, 0, 0, 0, 0, 14, 0.1, 9.2, 0, 0, 0, 0, 0, 0, -14, 0.1, 9.2, 0, 0, 0, 0, 0, 0, -14, 0.1, -9.2),
 "tilts": PackedFloat32Array(0, 0, 0, 0, 0)
 }
 closed = true
-[sub_resource type="BoxMesh" id="AwningMesh"]
-size = Vector3(2.5, 0.18, 0.75)
 
 [node name="CityEnvironment" type="Node3D"]
 
-[node name="RoadBack" type="MeshInstance3D" parent="."]
-position = Vector3(0, -0.15, -8.2)
-mesh = SubResource("RoadMesh")
-material_override = SubResource("RoadMat")
-[node name="RoadFront" type="MeshInstance3D" parent="."]
-position = Vector3(0, -0.15, 8.2)
-mesh = SubResource("RoadMesh")
-material_override = SubResource("RoadMat")
+[node name="CityGround" type="MeshInstance3D" parent="."]
+position = Vector3(0, -0.72, 0)
+mesh = SubResource("GroundMesh")
+material_override = SubResource("GroundMat")
 
-[node name="Cafe" type="Node3D" parent="."]
-position = Vector3(-9.1, 1.75, -5.9)
-[node name="ModelSlot" type="Node3D" parent="Cafe"]
-[node name="Building" type="MeshInstance3D" parent="Cafe/ModelSlot"]
-mesh = SubResource("BuildingMesh")
-material_override = SubResource("CafeMat")
-[node name="Awning" type="MeshInstance3D" parent="Cafe/ModelSlot"]
-position = Vector3(0, -0.45, -1.25)
-mesh = SubResource("AwningMesh")
-material_override = SubResource("MintMat")
+[node name="BackSidewalk" type="MeshInstance3D" parent="."]
+position = Vector3(0, -0.49, -11.35)
+mesh = SubResource("SidewalkMesh")
+material_override = SubResource("SidewalkMat")
 
-[node name="Shop" type="Node3D" parent="."]
-position = Vector3(9.1, 1.75, 5.7)
-[node name="ModelSlot" type="Node3D" parent="Shop"]
-[node name="Building" type="MeshInstance3D" parent="Shop/ModelSlot"]
-mesh = SubResource("BuildingMesh")
-material_override = SubResource("MintMat")
+[node name="FrontSidewalk" type="MeshInstance3D" parent="."]
+position = Vector3(0, -0.49, 11.35)
+mesh = SubResource("SidewalkMesh")
+material_override = SubResource("SidewalkMat")
+
+[node name="Roads" type="Node3D" parent="."]
+position = Vector3(0, -0.46, 0)
+
+[node name="BackRoadLeft" parent="Roads" instance=ExtResource("3")]
+position = Vector3(-7.5, 0, -9.15)
+scale = Vector3(3.1, 1, 3.1)
+
+[node name="BackRoadRight" parent="Roads" instance=ExtResource("3")]
+position = Vector3(7.5, 0, -9.15)
+scale = Vector3(3.1, 1, 3.1)
+
+[node name="FrontRoadLeft" parent="Roads" instance=ExtResource("3")]
+position = Vector3(-7.5, 0, 9.15)
+scale = Vector3(3.1, 1, 3.1)
+
+[node name="FrontRoadRight" parent="Roads" instance=ExtResource("3")]
+position = Vector3(7.5, 0, 9.15)
+scale = Vector3(3.1, 1, 3.1)
+
+[node name="WestCrossing" parent="Roads" instance=ExtResource("4")]
+position = Vector3(-13.8, 0, 0)
+rotation_degrees = Vector3(0, 90, 0)
+scale = Vector3(2.2, 1, 2.2)
+
+[node name="EastCrossing" parent="Roads" instance=ExtResource("4")]
+position = Vector3(13.8, 0, 0)
+rotation_degrees = Vector3(0, 90, 0)
+scale = Vector3(2.2, 1, 2.2)
+
+[node name="Buildings" type="Node3D" parent="."]
+
+[node name="Cafe" parent="Buildings" instance=ExtResource("6")]
+position = Vector3(-5.7, -0.38, -11.7)
+rotation_degrees = Vector3(0, 18, 0)
+scale = Vector3(0.82, 0.82, 0.82)
+
+[node name="CornerShop" parent="Buildings" instance=ExtResource("7")]
+position = Vector3(5.8, -0.38, -11.7)
+rotation_degrees = Vector3(0, -18, 0)
+scale = Vector3(0.82, 0.82, 0.82)
+
+[node name="Apartments" parent="Buildings" instance=ExtResource("8")]
+position = Vector3(-5.9, -0.38, 11.8)
+rotation_degrees = Vector3(0, 160, 0)
+scale = Vector3(0.78, 0.78, 0.78)
+
+[node name="Market" parent="Buildings" instance=ExtResource("9")]
+position = Vector3(6.1, -0.38, 11.8)
+rotation_degrees = Vector3(0, 198, 0)
+scale = Vector3(0.92, 0.92, 0.92)
+
+[node name="CafeParasol" parent="Buildings" instance=ExtResource("10")]
+position = Vector3(-8.3, -0.38, -10.9)
+scale = Vector3(0.9, 0.9, 0.9)
+
+[node name="StreetFurniture" type="Node3D" parent="."]
+
+[node name="TreeNW" parent="StreetFurniture" instance=ExtResource("11")]
+position = Vector3(-8.2, -0.4, -7.2)
+scale = Vector3(1.35, 1.35, 1.35)
+
+[node name="TreeNE" parent="StreetFurniture" instance=ExtResource("11")]
+position = Vector3(8.3, -0.4, -7)
+scale = Vector3(1.25, 1.25, 1.25)
+
+[node name="TreeSW" parent="StreetFurniture" instance=ExtResource("11")]
+position = Vector3(-8.5, -0.4, 7.1)
+scale = Vector3(1.3, 1.3, 1.3)
+
+[node name="TreeSE" parent="StreetFurniture" instance=ExtResource("11")]
+position = Vector3(8.4, -0.4, 7.1)
+scale = Vector3(1.2, 1.2, 1.2)
+
+[node name="LampNW" parent="StreetFurniture" instance=ExtResource("5")]
+position = Vector3(-6.9, -0.42, -8.1)
+scale = Vector3(1.3, 1.3, 1.3)
+
+[node name="LampSE" parent="StreetFurniture" instance=ExtResource("5")]
+position = Vector3(6.9, -0.42, 8.1)
+rotation_degrees = Vector3(0, 180, 0)
+scale = Vector3(1.3, 1.3, 1.3)
 
 [node name="TrafficLightA" parent="." instance=ExtResource("2")]
-position = Vector3(-7.8, 0, -7.0)
-rotation = Vector3(0, 0.75, 0)
+position = Vector3(-12.1, -0.42, -7.8)
+rotation_degrees = Vector3(0, 42, 0)
+
 [node name="TrafficLightB" parent="." instance=ExtResource("2")]
-position = Vector3(7.8, 0, 7.0)
-rotation = Vector3(0, -2.35, 0)
+position = Vector3(12.1, -0.42, 7.8)
+rotation_degrees = Vector3(0, -138, 0)
 phase_offset = 4.5
 
 [node name="CityRoadPath" type="Path3D" parent="."]
 curve = SubResource("RoadCurve")
+
 [node name="CarFollow" type="PathFollow3D" parent="CityRoadPath"]
 loop = true
 rotation_mode = 2
+
 [node name="CarNPC" parent="CityRoadPath/CarFollow" instance=ExtResource("1")]
-scale = Vector3(0.72, 0.72, 0.72)
+scale = Vector3(0.9, 0.9, 0.9)
+
+[node name="CarFollowB" type="PathFollow3D" parent="CityRoadPath"]
+loop = true
+rotation_mode = 2
+
+[node name="CarNPC" parent="CityRoadPath/CarFollowB" instance=ExtResource("1")]
+scale = Vector3(0.78, 0.78, 0.78)
+speed = 0.038
+start_progress_ratio = 0.48

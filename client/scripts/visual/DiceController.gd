@@ -117,7 +117,8 @@ func _build_arena() -> void:
 	floor_mesh.mesh = mesh
 	floor_mesh.position.y = -0.12
 	var material := StandardMaterial3D.new()
-	material.albedo_color = Color("6f5137")
+	material.albedo_color = Color("e7d6ae")
+	material.roughness = 0.92
 	floor_mesh.material_override = material
 	floor_body.add_child(floor_mesh)
 	var collision := CollisionShape3D.new()
@@ -152,6 +153,7 @@ func _build_arena() -> void:
 		var lower_material := StandardMaterial3D.new()
 		lower_material.albedo_color = Color("72513b")
 		lower_mesh.material_override = lower_material
+		lower_mesh.visible = false
 		wall.add_child(lower_mesh)
 		var upper_mesh := MeshInstance3D.new()
 		var upper_box := BoxMesh.new()
@@ -165,6 +167,7 @@ func _build_arena() -> void:
 		acrylic.roughness = 0.18
 		acrylic.cull_mode = BaseMaterial3D.CULL_DISABLED
 		upper_mesh.material_override = acrylic
+		upper_mesh.visible = false
 		wall.add_child(upper_mesh)
 		add_child(wall)
 	# Invisible ceiling is only a last safety net for extreme torque.
@@ -214,9 +217,13 @@ func _build_pyramid() -> void:
 	instruction.position = Vector3(0, 1.85, 0)
 	instruction.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_pyramid.add_child(instruction)
+	# Online play now uses the tactile lower-right ROLL control. Keep these
+	# internal nodes only so the dice-release API stays compatible; the former
+	# giant machine must never cover the board plaza.
+	_pyramid.visible = false
 	add_child(_pyramid)
 	_pyramid_hit_area = Area3D.new()
-	_pyramid_hit_area.input_ray_pickable = true
+	_pyramid_hit_area.input_ray_pickable = false
 	_pyramid_hit_area.collision_layer = 2
 	_pyramid_hit_area.collision_mask = 0
 	_pyramid_hit_area.position.y = 4.25
@@ -235,17 +242,10 @@ func _build_pyramid() -> void:
 func _release_from_pyramid(throw_strength: float) -> void:
 	_hatch.scale.x = 1.0
 	_pyramid.scale = Vector3.ONE
-	var amplitude := 0.07 + (throw_strength - 1.0) * 0.055
-	var step_time := 0.055 / sqrt(throw_strength)
-	var shake := create_tween()
-	shake.tween_property(_pyramid, "rotation:z", amplitude, step_time)
-	shake.tween_property(_pyramid, "rotation:z", -amplitude, step_time)
-	shake.tween_property(_pyramid, "rotation:x", amplitude * 0.8, step_time)
-	shake.tween_property(_pyramid, "rotation", Vector3.ZERO, 0.06)
-	await shake.finished
-	var open := create_tween()
-	open.tween_property(_hatch, "scale:x", 0.05, 0.08).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
-	await open.finished
+	# A very short hidden shuffle leaves Random Dice Selection independent from
+	# whichever visible machine model replaces this presentation in the future.
+	await get_tree().create_timer(0.08 / sqrt(throw_strength)).timeout
+	_hatch.scale.x = 0.05
 
 
 func _on_pyramid_input_event(_camera: Node, event: InputEvent, _event_position: Vector3, _normal: Vector3, _shape_idx: int) -> void:
@@ -403,7 +403,7 @@ func _build_bumpers() -> void:
 	for bumper_position in [Vector3(-1.9, 0.42, -1.15), Vector3(1.75, 0.42, 1.15), Vector3(2.0, 0.42, -1.25)]:
 		var body := StaticBody3D.new(); body.position = bumper_position; body.input_ray_pickable = false
 		var shape_node := CollisionShape3D.new(); var shape := CylinderShape3D.new(); shape.radius = 0.38; shape.height = 0.82; shape_node.shape = shape; body.add_child(shape_node)
-		var mesh_node := MeshInstance3D.new(); var mesh := CylinderMesh.new(); mesh.top_radius = 0.38; mesh.bottom_radius = 0.46; mesh.height = 0.82; mesh_node.mesh = mesh; mesh_node.material_override = _die_material if _die_material != null else StandardMaterial3D.new(); body.add_child(mesh_node)
+		var mesh_node := MeshInstance3D.new(); var mesh := CylinderMesh.new(); mesh.top_radius = 0.38; mesh.bottom_radius = 0.46; mesh.height = 0.82; mesh_node.mesh = mesh; mesh_node.visible = false; mesh_node.material_override = _die_material if _die_material != null else StandardMaterial3D.new(); body.add_child(mesh_node)
 		var physics := PhysicsMaterial.new(); physics.bounce = 0.72; physics.friction = 0.38; body.physics_material_override = physics
 		add_child(body)
 

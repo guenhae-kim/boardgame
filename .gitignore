@@ -3,6 +3,10 @@ client/.godot/
 server/node_modules/
 npm-debug.log*
 
+# Keep the complete downloaded source packs local. Only the curated runtime
+# subset under client/assets/third_party is shipped with the game.
+asset/
+
 # The release Web build is intentionally committed for Render deployment.
 !client/build/web/
 !client/build/web/**

@@ -1,0 +1,30 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Texture2D" path="res://assets/third_party/kenney/ui/yellow_panel.png" id="1"]
+[ext_resource type="Texture2D" path="res://assets/ui/paw_icon.svg" id="2"]
+
+[sub_resource type="StyleBoxTexture" id="CardStyle"]
+texture = ExtResource("1")
+texture_margin_left = 18.0
+texture_margin_top = 18.0
+texture_margin_right = 18.0
+texture_margin_bottom = 18.0
+axis_stretch_horizontal = 1
+axis_stretch_vertical = 1
+
+[node name="CardView" type="Button"]
+custom_minimum_size = Vector2(76, 106)
+pivot_offset = Vector2(38, 96)
+theme_override_colors/font_color = Color(1, 0.98, 0.89, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 15
+theme_override_styles/normal = SubResource("CardStyle")
+theme_override_styles/hover = SubResource("CardStyle")
+theme_override_styles/pressed = SubResource("CardStyle")
+icon = ExtResource("2")
+expand_icon = true
+icon_max_width = 48
+vertical_icon_alignment = 0
+text = "파랑"
+icon_alignment = 1
+

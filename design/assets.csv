@@ -1,14 +1,15 @@
 id,role,type,description,size/ratio,style line ref,source
-board_tabletop,Primary gameplay surface and clockwise race track,Godot TSCN,"Editor-placeable cream toy-board with readable color components",portrait 70-85% viewport,STYLE_FORMULA_V1,reference_media[0]
-player_hud,Four edge-anchored public player summaries,Godot Control,"Rounded compact portrait cards with nickname coin timer CPU badge and ticket mini-cards",4 responsive corners,STYLE_FORMULA_V1,reference_media[0]
-private_hand,Local-only usable prediction and spectator cards,Godot Control,"Bottom-center tactile fan with character-color cards only",5-6 cards,STYLE_FORMULA_V1,reference_media[0]
+board_tabletop,Primary gameplay surface and clockwise race track,Godot TSCN,"Editor-placeable cream toy-board with readable color components",portrait 70-85% viewport,STYLE_FORMULA_V2,reference_media[0]
+player_hud,Four edge-anchored public player summaries,Godot Control,"Portrait-led compact HUD with nickname coin timer CPU badge and ticket mini-cards",4 responsive corners,STYLE_FORMULA_V2,https://kenney.nl/assets/ui-pack
+private_hand,Local-only usable prediction and spectator cards,Godot Control,"Bottom-center tactile card fan with character-color cards only",5-6 cards,STYLE_FORMULA_V2,https://kenney.nl/assets/ui-pack
 betting_stacks,Public leg betting supply,Godot 3D component,"Five editor-placeable colored stacks showing top value and remaining depth",5 stacks,STYLE_FORMULA_V1,reference_media[0]
 dice_history,Public round progress,Godot Control + 3D component,"Compact ROUND and five toy-die result slots",5 slots,STYLE_FORMULA_V1,reference_media[0]
 prediction_zones,Winner and last card targets,Godot 3D component,"Distinct trophy and last-place board pads with hidden-card stacks",2 zones,STYLE_FORMULA_V1,reference_media[0]
 spectator_tiles,Player-owned plus/minus track modifiers,Godot 3D component,"Small readable owner-striped tiles beside valid track spaces",16 targets,STYLE_FORMULA_V1,reference_media[0]
-city_environment,Background miniature modern city,Godot TSCN,"Low-poly rounded streets shops trees lamps benches and crossings",board perimeter,STYLE_FORMULA_V1,reference_media[1]
-car_npc,Subtle moving city decoration,Godot TSCN,"GLB-ready toy car following an editor-authored Path3D",1 hero-unit long,STYLE_FORMULA_V1,reference_media[1]
-traffic_light,Timed background signal,Godot TSCN,"GLB-ready signal with emissive red yellow green meshes",2.2 hero-units tall,STYLE_FORMULA_V1,reference_media[1]
+city_environment,Background miniature modern city,Godot TSCN,"Kenney low-poly streets shops trees lamps benches and crossings",board perimeter,STYLE_FORMULA_V2,https://kenney.nl/assets/city-kit-roads
+city_buildings,Unified miniature storefront and skyline set,Imported GLB,"Selected mobile-friendly commercial buildings placed as editor scene instances",board perimeter,STYLE_FORMULA_V2,https://kenney.nl/assets/city-kit-commercial
+car_npc,Subtle moving city decoration,Imported GLB + Godot TSCN,"Kenney toy car following an editor-authored Path3D without gameplay physics",1 hero-unit long,STYLE_FORMULA_V2,https://kenney.nl/assets/toy-car-kit
+traffic_light,Timed background signal,Imported GLB + Godot TSCN,"Kenney road-kit signal with lightweight emissive state indicators",2.2 hero-units tall,STYLE_FORMULA_V2,https://kenney.nl/assets/city-kit-roads
 chat_sheet,Room chat drawer and quick reactions,Godot Control,"Right-edge chat button with 40-percent bottom sheet and quick emotes",mobile bottom sheet,STYLE_FORMULA_V1,reference_media[0]
 reaction_bubble,Short board-space player reaction,Godot Label3D,"Rounded two-second speech bubble anchored near the reacting piece",1.2 hero-units wide,STYLE_FORMULA_V1,reference_media[0]
 game_sfx,Existing runtime tabletop feedback,Generated audio,"Soft pop tok boing coin turn timer and round cues",short one-shots,STYLE_FORMULA_V1,generate

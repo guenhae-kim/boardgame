@@ -1,0 +1,24 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Texture2D" path="res://assets/third_party/kenney/ui/yellow_round.png" id="1"]
+[ext_resource type="Texture2D" path="res://assets/ui/dice_icon.svg" id="2"]
+
+[sub_resource type="StyleBoxTexture" id="RoundStyle"]
+texture = ExtResource("1")
+texture_margin_left = 20.0
+texture_margin_top = 20.0
+texture_margin_right = 20.0
+texture_margin_bottom = 20.0
+axis_stretch_horizontal = 1
+axis_stretch_vertical = 1
+
+[node name="DiceButton" type="Button"]
+custom_minimum_size = Vector2(92, 92)
+tooltip_text = "주사위 굴리기"
+theme_override_styles/normal = SubResource("RoundStyle")
+theme_override_styles/hover = SubResource("RoundStyle")
+theme_override_styles/pressed = SubResource("RoundStyle")
+icon = ExtResource("2")
+expand_icon = true
+icon_max_width = 58
+

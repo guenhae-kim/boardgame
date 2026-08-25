@@ -1,0 +1,93 @@
+[gd_resource type="Theme" load_steps=9 format=3]
+
+[ext_resource type="FontFile" path="res://assets/fonts/NotoSansKR-Variable.ttf" id="1"]
+
+[sub_resource type="StyleBoxFlat" id="Panel"]
+bg_color = Color(0.105, 0.15, 0.17, 0.86)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.96, 0.77, 0.42, 0.72)
+corner_radius_top_left = 20
+corner_radius_top_right = 20
+corner_radius_bottom_right = 20
+corner_radius_bottom_left = 20
+shadow_color = Color(0.04, 0.055, 0.06, 0.34)
+shadow_size = 8
+
+[sub_resource type="StyleBoxFlat" id="ButtonNormal"]
+bg_color = Color(0.95, 0.76, 0.33, 0.96)
+corner_radius_top_left = 18
+corner_radius_top_right = 18
+corner_radius_bottom_right = 18
+corner_radius_bottom_left = 18
+shadow_color = Color(0.18, 0.11, 0.04, 0.32)
+shadow_size = 6
+content_margin_left = 14.0
+content_margin_right = 14.0
+content_margin_top = 10.0
+content_margin_bottom = 10.0
+
+[sub_resource type="StyleBoxFlat" id="ButtonHover"]
+bg_color = Color(1, 0.84, 0.45, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 0.96, 0.78, 1)
+corner_radius_top_left = 18
+corner_radius_top_right = 18
+corner_radius_bottom_right = 18
+corner_radius_bottom_left = 18
+shadow_color = Color(0.18, 0.11, 0.04, 0.36)
+shadow_size = 7
+
+[sub_resource type="StyleBoxFlat" id="ButtonPressed"]
+bg_color = Color(0.83, 0.58, 0.19, 1)
+corner_radius_top_left = 18
+corner_radius_top_right = 18
+corner_radius_bottom_right = 18
+corner_radius_bottom_left = 18
+content_margin_top = 13.0
+content_margin_bottom = 7.0
+
+[sub_resource type="StyleBoxFlat" id="ButtonDisabled"]
+bg_color = Color(0.37, 0.4, 0.4, 0.64)
+corner_radius_top_left = 18
+corner_radius_top_right = 18
+corner_radius_bottom_right = 18
+corner_radius_bottom_left = 18
+
+[sub_resource type="StyleBoxFlat" id="LineEdit"]
+bg_color = Color(1, 0.97, 0.87, 0.96)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.74, 0.57, 0.32, 0.7)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+content_margin_left = 14.0
+content_margin_right = 14.0
+
+[resource]
+default_font = ExtResource("1")
+default_font_size = 20
+PanelContainer/styles/panel = SubResource("Panel")
+Button/colors/font_color = Color(0.25, 0.18, 0.1, 1)
+Button/colors/font_hover_color = Color(0.2, 0.13, 0.06, 1)
+Button/colors/font_pressed_color = Color(0.2, 0.13, 0.06, 1)
+Button/colors/font_disabled_color = Color(0.78, 0.8, 0.79, 0.7)
+Button/font_sizes/font_size = 20
+Button/styles/normal = SubResource("ButtonNormal")
+Button/styles/hover = SubResource("ButtonHover")
+Button/styles/pressed = SubResource("ButtonPressed")
+Button/styles/disabled = SubResource("ButtonDisabled")
+LineEdit/colors/font_color = Color(0.22, 0.17, 0.12, 1)
+LineEdit/colors/font_placeholder_color = Color(0.38, 0.32, 0.27, 0.65)
+LineEdit/styles/normal = SubResource("LineEdit")
+Label/colors/font_color = Color(0.96, 0.94, 0.86, 1)
+
