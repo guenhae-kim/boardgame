@@ -20,8 +20,10 @@ export class Room {
     this.code = code;
     this.maxPlayers = Math.min(maxPlayers, 4);
     this.players = new Map();
+    this.spectators = new Map();
     this.nextPlayerNumber = 1;
     this.nextCpuNumber = 1;
+    this.nextSpectatorNumber = 1;
     this.snapshotSequence = 0;
     this.hostPlayerId = "";
     this.started = false;
@@ -59,6 +61,21 @@ export class Room {
     return player;
   }
 
+  addSpectator(socket, nickname, identityId = "") {
+    const number = this.nextSpectatorNumber++;
+    const spectator = {
+      id: `spectator_${number}`,
+      nickname,
+      identityId: String(identityId || ""),
+      socket,
+      connected: true,
+      reconnectToken: randomUUID(),
+      disconnectedAt: 0,
+    };
+    this.spectators.set(spectator.id, spectator);
+    return spectator;
+  }
+
   reconnect(socket, token) {
     if (this.isGameFinished()) throw new ProtocolError("GAME_FINISHED", "Finished games cannot be resumed");
     const player = [...this.players.values()].find((candidate) => !candidate.isCpu && candidate.reconnectToken === token);
@@ -68,6 +85,17 @@ export class Room {
     player.connected = true;
     player.disconnectedAt = 0;
     return player;
+  }
+
+  reconnectSpectator(socket, token) {
+    if (this.isGameFinished()) throw new ProtocolError("GAME_FINISHED", "Finished games cannot be resumed");
+    const spectator = [...this.spectators.values()].find((candidate) => candidate.reconnectToken === token);
+    if (!spectator) throw new ProtocolError("RECONNECT_FAILED", "Spectator token is invalid or expired");
+    if (spectator.socket && spectator.socket.readyState === 1) spectator.socket.close(4001, "Reconnected elsewhere");
+    spectator.socket = socket;
+    spectator.connected = true;
+    spectator.disconnectedAt = 0;
+    return spectator;
   }
 
   markDisconnected(playerId, socket, now = Date.now()) {
@@ -81,6 +109,25 @@ export class Room {
     this.tryUnlockGame();
     if (this.started && playerId === this.hostPlayerId) this.migrateHost();
     return player;
+  }
+
+  markSpectatorDisconnected(spectatorId, socket, now = Date.now()) {
+    const spectator = this.spectators.get(spectatorId);
+    if (!spectator || spectator.socket !== socket) return null;
+    spectator.socket = null;
+    spectator.connected = false;
+    spectator.disconnectedAt = now;
+    return spectator;
+  }
+
+  leaveSpectator(spectatorId, socket) {
+    const spectator = this.spectators.get(spectatorId);
+    if (!spectator || spectator.socket !== socket) {
+      throw new ProtocolError("NOT_IN_ROOM", "Spectator is not in this room");
+    }
+    spectator.reconnectToken = "";
+    this.spectators.delete(spectatorId);
+    return spectator;
   }
 
   leave(playerId, socket) {
@@ -113,17 +160,29 @@ export class Room {
 
   sessionStatus(token) {
     const player = this.playerForToken(token);
-    if (!player) return { status: "invalid" };
+    if (!player) {
+      const spectator = [...this.spectators.values()].find((candidate) => candidate.reconnectToken === token);
+      if (!spectator) return { status: "invalid" };
+      return this.isGameFinished()
+        ? { status: "finished", role: "spectator", spectator }
+        : { status: "active", role: "spectator", spectator };
+    }
     if (this.isGameFinished()) return { status: "finished", player };
-    return { status: "active", player };
+    return { status: "active", role: "player", player };
   }
 
   leaveByToken(token) {
     const player = this.playerForToken(token);
-    if (!player) throw new ProtocolError("RECONNECT_FAILED", "Session token is invalid or expired");
+    if (!player) {
+      const spectator = [...this.spectators.values()].find((candidate) => candidate.reconnectToken === token);
+      if (!spectator) throw new ProtocolError("RECONNECT_FAILED", "Session token is invalid or expired");
+      spectator.reconnectToken = "";
+      this.spectators.delete(spectator.id);
+      return { role: "spectator", member: spectator };
+    }
     if (this.started && !this.isGameFinished()) this.takeOverWithCpu(player, "explicit_leave");
     else this.removeHuman(player);
-    return player;
+    return { role: "player", member: player };
   }
 
   removeHuman(player) {
@@ -180,6 +239,13 @@ export class Room {
     this.broadcastLobby();
   }
 
+  updateSpectatorNickname(spectatorId, nickname) {
+    const spectator = this.spectators.get(spectatorId);
+    if (!spectator) throw new ProtocolError("NOT_IN_ROOM", "Spectator is not in this room");
+    spectator.nickname = nickname;
+    this.broadcastLobby();
+  }
+
   migrateHost() {
     const nextHost = [...this.players.values()].find((candidate) => !candidate.isCpu && candidate.connected);
     if (!nextHost || nextHost.id === this.hostPlayerId) return;
@@ -206,6 +272,11 @@ export class Room {
       if (player.isCpu || player.connected || now - player.disconnectedAt < RECONNECT_GRACE_MS) continue;
       if (this.started && !this.isGameFinished()) this.takeOverWithCpu(player, "reconnect_timeout");
       else this.removeHuman(player);
+    }
+    for (const spectator of [...this.spectators.values()]) {
+      if (spectator.connected || now - spectator.disconnectedAt < RECONNECT_GRACE_MS) continue;
+      spectator.reconnectToken = "";
+      this.spectators.delete(spectator.id);
     }
   }
 
@@ -242,10 +313,20 @@ export class Room {
     return [...this.players.values()].map((player) => this.publicPlayer(player));
   }
 
+  publicSpectators() {
+    return [...this.spectators.values()].map((spectator) => ({
+      spectator_id: spectator.id,
+      nickname: spectator.nickname,
+      connected: spectator.connected,
+      role: "spectator",
+    }));
+  }
+
   lobbyPayload() {
     return {
       room_code: this.code, host_player_id: this.hostPlayerId, started: this.started,
       max_slots: this.maxPlayers, players: this.publicPlayers(),
+      spectators: this.publicSpectators(), spectator_count: this.spectators.size,
     };
   }
 
@@ -328,6 +409,7 @@ export class Room {
         .map((player) => player.id),
     );
     for (const player of this.players.values()) this.sendGameUpdate(player, events, actorId);
+    for (const spectator of this.spectators.values()) this.sendSpectatorGameUpdate(spectator, events, actorId);
     this.tryUnlockGame();
   }
 
@@ -386,6 +468,22 @@ export class Room {
     player.socket.send(encode(MessageType.GAME_UPDATE, payload));
   }
 
+  sendSpectatorGameUpdate(spectator, events = [], actorId = "") {
+    if (!spectator || !spectator.socket || spectator.socket.readyState !== 1 || !this.publicState) return;
+    spectator.socket.send(encode(MessageType.GAME_UPDATE, {
+      room_code: this.code,
+      role: "spectator",
+      spectator_id: spectator.id,
+      game_sequence: this.gameSequence,
+      actor_id: actorId,
+      events,
+      public_state: this.publicState,
+      game_busy: this.gameBusy,
+      turn_deadline_ms: this.turnDeadlineMs,
+      server_time: Date.now(),
+    }));
+  }
+
   sendTo(playerId, type, payload) {
     const player = this.players.get(playerId);
     if (player?.socket?.readyState === 1) player.socket.send(encode(type, payload));
@@ -405,6 +503,9 @@ export class Room {
     const data = encode(type, payload);
     for (const player of this.players.values()) {
       if (!player.isCpu && player.socket !== exceptSocket && player.socket?.readyState === 1) player.socket.send(data);
+    }
+    for (const spectator of this.spectators.values()) {
+      if (spectator.socket !== exceptSocket && spectator.socket?.readyState === 1) spectator.socket.send(data);
     }
   }
 

@@ -38,6 +38,7 @@ var _camera: Camera3D
 var _acting_player_id := ""
 var _acting_player_name := ""
 var _pending_die_event: Dictionary = {}
+var _defer_state_refresh := false
 var sound_manager: CamelSoundManager
 
 
@@ -320,7 +321,7 @@ func _set_phase(next_phase: FlowPhase, description: String, input_enabled: bool)
 	ui.set_flow_state(PHASE_NAMES[phase], display_name, description, input_enabled)
 	if dice != null:
 		dice.gesture_enabled = phase == FlowPhase.WAITING_FOR_ACTION
-	if rules != null and rules.state != null:
+	if not _defer_state_refresh and rules != null and rules.state != null:
 		ui.refresh_state(rules)
 
 

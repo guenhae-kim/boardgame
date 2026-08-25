@@ -3,6 +3,7 @@ extends Node
 signal connection_status_changed(status: String)
 signal room_created(payload: Dictionary)
 signal room_joined(payload: Dictionary)
+signal spectator_joined(payload: Dictionary)
 signal room_left(payload: Dictionary)
 signal session_status(payload: Dictionary)
 signal identity_changed(nickname: String)
@@ -27,6 +28,8 @@ var _reconnect_elapsed := 0.0
 var _leave_elapsed := 0.0
 var room_code := ""
 var player_id := ""
+var spectator_id := ""
+var room_role := "player"
 var reconnect_token := ""
 var identity_player_id := ""
 var nickname := ""
@@ -116,10 +119,24 @@ func join_room(room_code: String, nickname: String) -> void:
 		"identity_id": identity_player_id,
 	})
 
+func join_spectator(room_code: String, nickname: String) -> void:
+	set_identity_nickname(nickname)
+	send_message(Protocol.JOIN_SPECTATOR, {
+		"room_code": room_code.strip_edges().to_upper(),
+		"nickname": nickname,
+		"identity_id": identity_player_id,
+	})
+
 func leave_room() -> void:
 	if _leave_pending or not has_room_session():
 		return
-	_leave_payload = {"room_code": room_code, "player_id": player_id, "reconnect_token": reconnect_token}
+	_leave_payload = {
+		"room_code": room_code,
+		"role": room_role,
+		"player_id": player_id,
+		"spectator_id": spectator_id,
+		"reconnect_token": reconnect_token,
+	}
 	_leave_pending = true
 	_leave_elapsed = 0.0
 	if _socket.get_ready_state() == WebSocketPeer.STATE_OPEN:
@@ -207,6 +224,10 @@ func _handle_packet(text: String) -> void:
 			_attached_to_room = true
 			_remember_session(payload)
 			room_joined.emit(payload)
+		Protocol.SPECTATOR_JOINED:
+			_attached_to_room = true
+			_remember_session(payload)
+			spectator_joined.emit(payload)
 		Protocol.ROOM_LEFT:
 			_leave_pending = false
 			_leave_elapsed = 0.0
@@ -269,12 +290,17 @@ func _send_detached_leave() -> void:
 
 func _remember_session(payload: Dictionary) -> void:
 	room_code = str(payload.get("room_code", room_code))
-	player_id = str(payload.get("player_id", player_id))
+	room_role = str(payload.get("role", "spectator" if payload.has("spectator_id") else "player"))
+	player_id = "" if room_role == "spectator" else str(payload.get("player_id", ""))
+	spectator_id = str(payload.get("spectator_id", "")) if room_role == "spectator" else ""
 	reconnect_token = str(payload.get("reconnect_token", reconnect_token))
 	_save_session()
 
 func _save_session() -> void:
-	var data := JSON.stringify({"room_code": room_code, "player_id": player_id, "reconnect_token": reconnect_token})
+	var data := JSON.stringify({
+		"room_code": room_code, "role": room_role, "player_id": player_id,
+		"spectator_id": spectator_id, "reconnect_token": reconnect_token,
+	})
 	if OS.has_feature("web"):
 		var storage: JavaScriptObject = JavaScriptBridge.get_interface("localStorage")
 		if storage != null:
@@ -287,6 +313,8 @@ func _save_session() -> void:
 func _clear_session() -> void:
 	room_code = ""
 	player_id = ""
+	spectator_id = ""
+	room_role = "player"
 	reconnect_token = ""
 	if OS.has_feature("web"):
 		var storage: JavaScriptObject = JavaScriptBridge.get_interface("localStorage")
@@ -341,4 +369,6 @@ func _load_session() -> void:
 	if parsed is Dictionary:
 		room_code = str(parsed.get("room_code", ""))
 		player_id = str(parsed.get("player_id", ""))
+		spectator_id = str(parsed.get("spectator_id", ""))
+		room_role = str(parsed.get("role", "spectator" if not spectator_id.is_empty() else "player"))
 		reconnect_token = str(parsed.get("reconnect_token", ""))

@@ -26,6 +26,7 @@ func _ready() -> void:
 	_network.connection_status_changed.connect(_on_connection_status_changed)
 	_network.room_created.connect(_on_room_entered)
 	_network.room_joined.connect(_on_room_entered)
+	_network.spectator_joined.connect(_on_room_entered)
 	_network.server_error.connect(_on_server_error)
 	$TopBar/SoundButton.pressed.connect(func(): toast.show_message("사운드 설정은 준비 중이에요"))
 	_on_connection_status_changed("Connecting")
@@ -53,11 +54,14 @@ func _on_join_pressed() -> void:
 	join_sheet.show_sheet()
 
 
-func _on_join_code_submitted(code: String) -> void:
+func _on_join_code_submitted(code: String, role: String) -> void:
 	join_sheet.hide_sheet()
 	_set_actions_enabled(false)
-	status_label.text = "친구의 방을 찾는 중…"
-	_network.join_room(code, _nickname())
+	status_label.text = "TV 관전 화면을 준비하는 중…" if role == "spectator" else "친구의 방을 찾는 중…"
+	if role == "spectator":
+		_network.join_spectator(code, _nickname())
+	else:
+		_network.join_room(code, _nickname())
 
 
 func _nickname() -> String:

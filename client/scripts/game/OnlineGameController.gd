@@ -5,6 +5,8 @@ const ROOM_LOBBY_SCENE := preload("res://scenes/ui/RoomLobby.tscn")
 
 var room_code := ""
 var local_player_id := ""
+var local_spectator_id := ""
+var is_tv_spectator := false
 var host_player_id := ""
 var lobby_ui: CamelRoomLobbyUI
 var online_ui: CamelOnlineGameUI
@@ -16,6 +18,8 @@ var _cpu_pending := false
 var _turn_unlocked := false
 var _cpu_controller := CamelCPUController.new()
 var _network: Node
+var _authority_action_pending := false
+var _authority_roll_visible := false
 
 func _ready() -> void:
 	_network = get_node("/root/NetworkClient")
@@ -83,13 +87,20 @@ func _build_ui() -> void:
 func start_room(payload: Dictionary) -> void:
 	set_room_active(true)
 	room_code = str(payload.get("room_code", ""))
-	local_player_id = str(payload.get("player_id", ""))
+	is_tv_spectator = str(payload.get("role", "player")) == "spectator"
+	local_player_id = "" if is_tv_spectator else str(payload.get("player_id", ""))
+	local_spectator_id = str(payload.get("spectator_id", "")) if is_tv_spectator else ""
+	online_ui.set_tv_spectator_mode(is_tv_spectator)
+	camera_director.set_broadcast_mode(is_tv_spectator)
 	var lobby := payload.get("lobby", {}) as Dictionary
 	if lobby.is_empty(): lobby = {"room_code": room_code, "players": payload.get("players", []), "max_slots": 4}
 	_on_lobby_state(lobby)
 
 func clear_room() -> void:
-	room_code = ""; local_player_id = ""; rules = null; board.visible = false; dice.visible = false
+	room_code = ""; local_player_id = ""; local_spectator_id = ""; is_tv_spectator = false
+	rules = null; board.visible = false; dice.visible = false
+	online_ui.set_tv_spectator_mode(false)
+	camera_director.set_broadcast_mode(false)
 	set_room_active(false)
 
 func set_room_active(active: bool) -> void:
@@ -99,9 +110,10 @@ func set_room_active(active: bool) -> void:
 func _on_lobby_state(payload: Dictionary) -> void:
 	if not room_code.is_empty() and str(payload.get("room_code", "")) != room_code: return
 	room_code = str(payload.get("room_code", room_code)); host_player_id = str(payload.get("host_player_id", ""))
-	lobby_ui.update_lobby(payload, local_player_id)
+	lobby_ui.update_lobby(payload, local_player_id, "spectator" if is_tv_spectator else "player")
 
 func _on_authority_request(payload: Dictionary) -> void:
+	if is_tv_spectator: return
 	if local_player_id != host_player_id and host_player_id != "": return
 	if str(payload.get("reason", "")) == "host_migration" and payload.has("authority_state"):
 		rules = CamelGameRules.new()
@@ -121,13 +133,48 @@ func _on_authority_request(payload: Dictionary) -> void:
 	_commit(events, "")
 
 func _on_action_request(payload: Dictionary) -> void:
-	if local_player_id != host_player_id or rules == null: return
+	if is_tv_spectator or local_player_id != host_player_id or rules == null: return
 	var actor := str(payload.get("actor_id", ""))
-	var result := rules.apply_action(actor, CamelAction.from_dict(payload.get("action", {}) as Dictionary))
+	await _resolve_authority_action(actor, CamelAction.from_dict(payload.get("action", {}) as Dictionary))
+
+
+func _resolve_authority_action(actor_id: String, action: CamelAction, timed_out: bool = false) -> void:
+	if _authority_action_pending or rules == null:
+		return
+	_authority_action_pending = true
+	var validation_error := rules.validate_action(actor_id, action)
+	if not validation_error.is_empty():
+		_commit([CamelEvent.new("ACTION_REJECTED", {"player_id": actor_id, "error": validation_error})], actor_id)
+		_authority_action_pending = false
+		return
+	if action.type == CamelAction.ROLL_DIE:
+		var die_id := rules.choose_next_die()
+		if die_id.is_empty():
+			_commit([CamelEvent.new("ACTION_REJECTED", {"player_id": actor_id, "error": "굴릴 수 있는 주사위가 없습니다."})], actor_id)
+			_authority_action_pending = false
+			return
+		var throw_spec := dice.create_throw_spec(2.25)
+		_set_phase(FlowPhase.ROLLING_DICE, "%s가 주사위를 던집니다." % str(rules.state.player_by_id(actor_id).get("name", actor_id)), false)
+		await camera_director.show_dice(dice.global_position, 0.28)
+		sound_manager.play("dice_throw")
+		var physical_face := await dice.play_roll_with_spec(die_id, throw_spec)
+		sound_manager.play("dice_final")
+		_authority_roll_visible = true
+		rules.set_authoritative_physical_roll(die_id, physical_face, {
+			"throw_spec": throw_spec,
+			"physics_frames": dice.last_roll_frames.duplicate(true),
+			"physics_authority_id": local_player_id,
+			"physics_settled": true,
+		})
+	var result := rules.apply_action(actor_id, action)
 	if bool(result.get("ok", false)):
-		_commit(result.get("events", []) as Array, actor)
+		var events := result.get("events", []) as Array
+		if timed_out:
+			events.push_front(CamelEvent.new(CamelEvent.TURN_TIMED_OUT, {"player_id": actor_id, "action": action.to_dict()}))
+		_commit(events, actor_id)
 	else:
-		_commit([CamelEvent.new("ACTION_REJECTED", {"player_id": actor, "error": str(result.get("error", "잘못된 행동"))})], actor)
+		_commit([CamelEvent.new("ACTION_REJECTED", {"player_id": actor_id, "error": str(result.get("error", "잘못된 행동"))})], actor_id)
+	_authority_action_pending = false
 
 func _commit(events: Array, actor_id: String) -> void:
 	_network.send_game_commit({
@@ -139,7 +186,7 @@ func _commit(events: Array, actor_id: String) -> void:
 	})
 
 func _request_action(action: CamelAction) -> void:
-	if not _turn_unlocked or rules == null or rules.state.phase != "PLAYING":
+	if is_tv_spectator or not _turn_unlocked or rules == null or rules.state.phase != "PLAYING":
 		return
 	if str(rules.state.current_player().get("id", "")) != local_player_id:
 		return
@@ -162,7 +209,7 @@ func _drain_updates() -> void:
 		var payload := _update_queue.pop_front() as Dictionary
 		_turn_unlocked = false
 		online_ui.set_turn_deadline(0, int(payload.get("server_time", 0)), false)
-		private_state = payload.get("private_state", {}) as Dictionary
+		private_state = {} if is_tv_spectator else payload.get("private_state", {}) as Dictionary
 		var incoming: CamelGameState
 		if local_player_id == host_player_id and payload.has("authority_state"):
 			incoming = CamelGameState.from_dict(payload["authority_state"] as Dictionary)
@@ -179,12 +226,17 @@ func _drain_updates() -> void:
 			var actor := rules.state.player_by_id(actor_id); _acting_player_name = str(actor.get("name", actor_id))
 		var events := CamelGameProjection.events_from_dict(payload.get("events", []) as Array)
 		if not events.is_empty():
-			event_queue.enqueue_all(events); await event_queue.play_all(_play_event)
+			# The payload already contains the authoritative post-action state. Do
+			# not expose its coins/cards while its die and pieces are still moving.
+			_defer_state_refresh = true
+			event_queue.enqueue_all(events)
+			await event_queue.play_all(_play_event)
+			_defer_state_refresh = false
 		board.sync_state(rules.state)
 		var current := rules.state.current_player(); var current_id := str(current["id"])
 		var game_busy := bool(payload.get("game_busy", true))
 		_turn_unlocked = not game_busy and rules.state.phase == "PLAYING"
-		var can_act := current_id == local_player_id and not bool(current.get("is_cpu", false)) and rules.state.phase == "PLAYING" and not game_busy
+		var can_act := not is_tv_spectator and current_id == local_player_id and not bool(current.get("is_cpu", false)) and rules.state.phase == "PLAYING" and not game_busy
 		_acting_player_id = current_id; _acting_player_name = str(current["name"]); online_ui.set_presented_player(current_id)
 		_set_phase(FlowPhase.WAITING_FOR_ACTION if rules.state.phase == "PLAYING" else FlowPhase.GAME_END, "내 차례입니다. 행동을 선택하세요." if can_act else "%s가 행동 중입니다." % _acting_player_name, can_act)
 		online_ui.set_online_context(rules.state, private_state, local_player_id, can_act)
@@ -195,7 +247,7 @@ func _drain_updates() -> void:
 		# see through card Controls before their GUI event is consumed.
 		dice.gesture_enabled = false
 		if can_act: _on_interaction_mode("bet", CamelGameState.RACE_CAMELS)
-		if game_busy:
+		if game_busy and not is_tv_spectator:
 			_network.send_game_ready(int(payload.get("game_sequence", 0)))
 		elif local_player_id == host_player_id and bool(current.get("is_cpu", false)) and rules.state.phase == "PLAYING":
 			_schedule_cpu(current_id)
@@ -206,7 +258,7 @@ func _on_game_unlocked(payload: Dictionary) -> void:
 		return
 	var current := rules.state.current_player()
 	var current_id := str(current.get("id", ""))
-	var can_act := current_id == local_player_id and not bool(current.get("is_cpu", false)) and rules.state.phase == "PLAYING"
+	var can_act := not is_tv_spectator and current_id == local_player_id and not bool(current.get("is_cpu", false)) and rules.state.phase == "PLAYING"
 	_turn_unlocked = rules.state.phase == "PLAYING"
 	_acting_player_id = current_id
 	_acting_player_name = str(current.get("name", current_id))
@@ -222,26 +274,29 @@ func _on_game_unlocked(payload: Dictionary) -> void:
 		_schedule_cpu(current_id)
 
 func _on_timeout_request(payload: Dictionary) -> void:
-	if local_player_id != host_player_id or rules == null or rules.state.phase != "PLAYING":
+	if is_tv_spectator or local_player_id != host_player_id or rules == null or rules.state.phase != "PLAYING":
 		return
 	var actor_id := str(payload.get("actor_id", ""))
 	if str(rules.state.current_player().get("id", "")) != actor_id:
 		return
 	var action := _cpu_controller.choose_random_legal_action(rules, actor_id)
-	var result := rules.apply_action(actor_id, action)
-	if not bool(result.get("ok", false)):
-		return
-	var events := result.get("events", []) as Array
-	events.push_front(CamelEvent.new(CamelEvent.TURN_TIMED_OUT, {"player_id": actor_id, "action": action.to_dict()}))
-	_commit(events, actor_id)
+	await _resolve_authority_action(actor_id, action, true)
 
 func _play_event(event: CamelEvent) -> void:
 	if event.type == CamelEvent.DIE_ROLLED:
 		_set_phase(FlowPhase.ROLLING_DICE, "%s 주사위가 빠르게 굴러갑니다." % event.data.get("die", ""), false)
-		await camera_director.show_dice(dice.global_position, 0.28)
-		sound_manager.play("dice_throw")
-		await dice.play_roll(str(event.data.get("die", "blue")), int(event.data.get("value", 1)), 2.25)
-		sound_manager.play("dice_final")
+		var authority_already_showed := _authority_roll_visible and str(event.data.get("physics_authority_id", "")) == local_player_id
+		if authority_already_showed:
+			_authority_roll_visible = false
+		else:
+			await camera_director.show_dice(dice.global_position, 0.28)
+			sound_manager.play("dice_throw")
+			var physics_frames := event.data.get("physics_frames", []) as Array
+			var throw_spec := event.data.get("throw_spec", {}) as Dictionary
+			var replay_face := await dice.play_authority_replay(str(event.data.get("die", "blue")), physics_frames) if not physics_frames.is_empty() else await dice.play_roll_with_spec(str(event.data.get("die", "blue")), throw_spec if not throw_spec.is_empty() else dice.create_throw_spec(2.25))
+			sound_manager.play("dice_final")
+			if replay_face != int(event.data.get("value", replay_face)):
+				push_warning("Dice replay diverged from authority: local=%d authority=%d" % [replay_face, int(event.data.get("value", replay_face))])
 	if event.type == "ACTION_REJECTED":
 		if str(event.data.get("player_id", "")) == local_player_id: online_ui.show_error(str(event.data.get("error", "행동할 수 없습니다.")))
 		await get_tree().create_timer(0.15).timeout; return
@@ -258,8 +313,7 @@ func _schedule_cpu(cpu_id: String) -> void:
 	await get_tree().create_timer(randf_range(0.55, 0.9)).timeout
 	if rules != null and rules.state.phase == "PLAYING" and str(rules.state.current_player()["id"]) == cpu_id:
 		var action := _cpu_controller.choose_action(rules, cpu_id)
-		var result := rules.apply_action(cpu_id, action)
-		if bool(result.get("ok", false)): _commit(result.get("events", []) as Array, cpu_id)
+		await _resolve_authority_action(cpu_id, action)
 	_cpu_pending = false
 
 func _on_interaction_mode(target_type: String, ids: Array) -> void:
@@ -320,7 +374,7 @@ func _on_player_takeover(payload: Dictionary) -> void:
 		_schedule_cpu(changed_id)
 
 func _can_local_player_act() -> bool:
-	if rules == null or rules.state.phase != "PLAYING" or not _turn_unlocked:
+	if is_tv_spectator or rules == null or rules.state.phase != "PLAYING" or not _turn_unlocked:
 		return false
 	var current := rules.state.current_player()
 	return str(current.get("id", "")) == local_player_id and not bool(current.get("is_cpu", false))

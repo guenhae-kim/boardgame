@@ -69,6 +69,7 @@ Node Room: authority_state + public_state + private_states[player_id]
 기본 `HELLO/CREATE_ROOM/JOIN_ROOM/PING/PONG/ERROR`에 다음 흐름을 사용합니다.
 
 - 로비: `RECONNECT`, `LOBBY_STATE`, `LOBBY_CPU`, `START_GAME`
+- TV 관전: `JOIN_SPECTATOR`, `SPECTATOR_JOINED` (player slot과 분리된 public-only session)
 - 세션 수명주기: `SESSION_CHECK`, `SESSION_STATUS`, `LEAVE_ROOM`, `LEAVE_SESSION`, `ROOM_LEFT`
 - 플레이어 정보: `UPDATE_NICKNAME`, `NICKNAME_UPDATED`, `PLAYER_TAKEOVER`
 - 권위 게임: `GAME_AUTHORITY_REQUEST`, `GAME_ACTION`, `GAME_ACTION_REQUEST`, `GAME_COMMIT`, `GAME_UPDATE`
@@ -77,6 +78,8 @@ Node Room: authority_state + public_state + private_states[player_id]
 - 채팅: `CHAT_SEND`, `CHAT_MESSAGE`
 
 채팅은 Room 안에서만 broadcast되며 공백 차단, 200자 제한, 350ms rate limit이 적용됩니다. 게임 Action 처리와 별도 경로입니다.
+
+방 참가 시 `플레이어` 또는 `TV 관전 모드`를 선택할 수 있습니다. TV 관전자는 4개 player slot을 사용하지 않으며, 방이 가득 찬 뒤에도 참가할 수 있습니다. `GAME_UPDATE`에는 `public_state`와 공개 event만 포함되고 `private_state`, `authority_state`, 다른 플레이어의 token은 포함되지 않습니다. 변조된 관전자 `GAME_ACTION/GAME_COMMIT/GAME_READY`는 서버에서 `SPECTATOR_FORBIDDEN`으로 거절됩니다.
 
 브라우저의 영구 `player identity`(identity id/닉네임)와 일시적인 `room session`(방 코드/좌석/reconnect token)은 별도 저장됩니다. 새 페이지는 로컬 세션만으로 자동 입장하지 않고 `SESSION_CHECK`로 서버의 active session 여부를 검증합니다. 명시적 Leave는 서버 ACK 뒤에만 room session을 지우며, 진행 중인 좌석은 즉시 CPU로 전환되고 기존 token은 폐기됩니다. 종료된 게임은 active resume 후보가 아닙니다.
 
@@ -104,8 +107,8 @@ godot --headless --path client --script res://tests/OnlineNetworkE2E.gd -- --ser
 - 규칙 69개: 이동/스택/관중 타일/구간 정산/최종 예측/승자/private projection/CPU 완주
 - 3D Flow: 이벤트 큐가 끝난 뒤에만 다음 턴
 - Dice Safety: 여섯 색, 약/강 투척 모두 트레이 내부 유지
-- Online UI: 손패, 내 턴 잠금, prediction/track 직접 대상
-- Node 통합: Room 격리, Host/CPU, private routing, action order, ownership spoof reject, server timeout, reconnect, host migration
+- Online UI: 손패, 내 턴 잠금, prediction/track 직접 대상, public-only TV broadcast layout/fullscreen
+- Node 통합: Room 격리, Host/CPU, private routing, action order, ownership spoof reject, server timeout, reconnect, host migration, 4인+관전자 및 spectator action reject
 - 실제 Godot+Node E2E: 두 WebSocket 클라이언트가 동일 sequence의 주사위/이동 Event 수신
 - Full Online E2E: Human 2 + CPU 2, 첫 Human timeout, private hand, ownership, reconnect를 포함해 GAME_OVER까지 완주
 

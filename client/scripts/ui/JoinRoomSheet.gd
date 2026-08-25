@@ -1,25 +1,29 @@
 class_name CamelJoinRoomSheet
 extends Control
 
-signal join_requested(room_code: String)
+signal join_requested(room_code: String, role: String)
 
 @onready var sheet: PanelContainer = $Sheet
 @onready var room_code_input: LineEdit = $Sheet/Margin/Content/RoomCode
-@onready var join_button: Button = $Sheet/Margin/Content/JoinButton
+@onready var player_join_button: Button = $Sheet/Margin/Content/PlayerJoinButton
+@onready var spectator_join_button: Button = $Sheet/Margin/Content/SpectatorJoinButton
 
 
 func _ready() -> void:
 	visible = false
 	$Dim.gui_input.connect(_on_dim_input)
 	$Sheet/Margin/Content/CancelButton.pressed.connect(hide_sheet)
-	join_button.pressed.connect(_submit)
-	room_code_input.text_submitted.connect(func(_value: String): _submit())
+	player_join_button.pressed.connect(func(): _submit("player"))
+	spectator_join_button.pressed.connect(func(): _submit("spectator"))
+	room_code_input.text_submitted.connect(func(_value: String): _submit("player"))
 	room_code_input.text_changed.connect(func(value: String):
 		var cleaned := value.to_upper()
 		if cleaned != value:
 			room_code_input.text = cleaned
 			room_code_input.caret_column = cleaned.length()
-		join_button.disabled = cleaned.strip_edges().length() != 4
+		var invalid := cleaned.strip_edges().length() != 4
+		player_join_button.disabled = invalid
+		spectator_join_button.disabled = invalid
 	)
 
 
@@ -47,13 +51,14 @@ func hide_sheet() -> void:
 
 func clear_code() -> void:
 	room_code_input.clear()
-	join_button.disabled = true
+	player_join_button.disabled = true
+	spectator_join_button.disabled = true
 
 
-func _submit() -> void:
+func _submit(role: String) -> void:
 	var code := room_code_input.text.strip_edges().to_upper()
 	if code.length() == 4:
-		join_requested.emit(code)
+		join_requested.emit(code, role)
 
 
 func _on_dim_input(event: InputEvent) -> void:

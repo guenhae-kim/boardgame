@@ -211,6 +211,13 @@ horizontal_alignment = 1
 vertical_alignment = 1
 autowrap_mode = 2
 
+[node name="SpectatorStatus" type="Label" parent="Root/LobbyPanel/Margin/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.2, 0.42, 0.45, 0.9)
+theme_override_font_sizes/font_size = 24
+text = "📺 TV 관전자 0명"
+horizontal_alignment = 1
+
 [node name="ReconnectHint" type="Label" parent="Root/LobbyPanel/Margin/Content"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.46, 0.38, 0.31, 0.72)

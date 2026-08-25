@@ -7,6 +7,7 @@ var state: CamelGameState
 var _rng := RandomNumberGenerator.new()
 var _forced_die := ""
 var _forced_value := 0
+var _roll_metadata: Dictionary = {}
 
 
 func _init(player_names: Array = [], seed_value: int = 0) -> void:
@@ -161,6 +162,15 @@ func available_actions(player_id: String) -> Array:
 func force_next_roll(die_id: String, value: int) -> void:
 	_forced_die = die_id
 	_forced_value = clampi(value, 1, 3)
+	_roll_metadata.clear()
+
+
+func set_authoritative_physical_roll(die_id: String, value: int, metadata: Dictionary = {}) -> void:
+	# Called only after the authority's RigidBody3D has settled and its top face
+	# was detected. This injects an observed result; it does not choose one.
+	_forced_die = die_id
+	_forced_value = clampi(value, 1, 3)
+	_roll_metadata = metadata.duplicate(true)
 
 
 func choose_next_die() -> String:
@@ -253,7 +263,11 @@ func _roll_die(player_id: String, events: Array) -> void:
 	if die_id == "gray":
 		camel_id = CamelGameState.CRAZY_CAMELS[_rng.randi_range(0, 1)]
 	state.dice_history.append({"die": die_id, "camel": camel_id, "value": value})
-	events.append(CamelEvent.new(CamelEvent.DIE_ROLLED, {"player_id": player_id, "die": die_id, "camel": camel_id, "value": value}))
+	var roll_event := {"player_id": player_id, "die": die_id, "camel": camel_id, "value": value}
+	for metadata_key in _roll_metadata:
+		roll_event[metadata_key] = _roll_metadata[metadata_key]
+	_roll_metadata.clear()
+	events.append(CamelEvent.new(CamelEvent.DIE_ROLLED, roll_event))
 	_move_camel(camel_id, value, events)
 
 

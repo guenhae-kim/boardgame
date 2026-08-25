@@ -118,7 +118,7 @@ export function createGameServer(options = {}) {
   });
 
   wsServer.on("connection", (socket) => {
-    socket.context = { room: null, playerId: null, alive: true, lastChatAt: 0 };
+    socket.context = { room: null, role: "", playerId: null, spectatorId: null, alive: true, lastChatAt: 0 };
     socket.on("pong", () => { socket.context.alive = true; });
     send(socket, MessageType.HELLO, {
       protocol_version: PROTOCOL_VERSION,
@@ -140,7 +140,7 @@ export function createGameServer(options = {}) {
           if (socket.context.room) throw new ProtocolError("ALREADY_IN_ROOM", "Already in a room");
           const room = roomManager.createRoom();
           const player = room.addPlayer(socket, validatedNickname(payload.nickname), payload.identity_id);
-          socket.context = { ...socket.context, room, playerId: player.id };
+          socket.context = { ...socket.context, room, role: "player", playerId: player.id, spectatorId: null };
           send(socket, MessageType.ROOM_CREATED, {
             room_code: room.code,
             player_id: player.id,
@@ -159,7 +159,7 @@ export function createGameServer(options = {}) {
           const nickname = validatedNickname(payload.nickname);
           let player;
           player = room.addPlayer(socket, nickname, payload.identity_id);
-          socket.context = { ...socket.context, room, playerId: player.id };
+          socket.context = { ...socket.context, room, role: "player", playerId: player.id, spectatorId: null };
           send(socket, MessageType.ROOM_JOINED, {
             room_code: room.code,
             player_id: player.id,
@@ -172,12 +172,46 @@ export function createGameServer(options = {}) {
           return;
         }
 
+        if (type === MessageType.JOIN_SPECTATOR) {
+          if (socket.context.room) throw new ProtocolError("ALREADY_IN_ROOM", "Already in a room");
+          const room = roomManager.getRoom(payload.room_code);
+          if (!room) throw new ProtocolError("ROOM_NOT_FOUND", "Room code was not found");
+          const spectator = room.addSpectator(socket, validatedNickname(payload.nickname), payload.identity_id);
+          socket.context = { ...socket.context, room, role: "spectator", playerId: null, spectatorId: spectator.id };
+          send(socket, MessageType.SPECTATOR_JOINED, {
+            room_code: room.code,
+            role: "spectator",
+            spectator_id: spectator.id,
+            reconnect_token: spectator.reconnectToken,
+            players: room.publicPlayers(),
+            lobby: room.lobbyPayload(),
+            started: room.started,
+          });
+          room.broadcastLobby();
+          if (room.started) room.sendSpectatorGameUpdate(spectator);
+          return;
+        }
+
         if (type === MessageType.RECONNECT) {
           if (socket.context.room) throw new ProtocolError("ALREADY_IN_ROOM", "Already in a room");
           const room = roomManager.getRoom(payload.room_code);
           if (!room) throw new ProtocolError("ROOM_NOT_FOUND", "Room code was not found");
-          const player = room.reconnect(socket, String(payload.reconnect_token || ""));
-          socket.context = { ...socket.context, room, playerId: player.id };
+          const token = String(payload.reconnect_token || "");
+          const existingPlayer = room.playerForToken(token);
+          if (!existingPlayer) {
+            const spectator = room.reconnectSpectator(socket, token);
+            socket.context = { ...socket.context, room, role: "spectator", playerId: null, spectatorId: spectator.id };
+            send(socket, MessageType.SPECTATOR_JOINED, {
+              room_code: room.code, role: "spectator", spectator_id: spectator.id,
+              reconnect_token: spectator.reconnectToken, players: room.publicPlayers(),
+              lobby: room.lobbyPayload(), reconnected: true, started: room.started,
+            });
+            room.broadcastLobby();
+            if (room.started) room.sendSpectatorGameUpdate(spectator);
+            return;
+          }
+          const player = room.reconnect(socket, token);
+          socket.context = { ...socket.context, room, role: "player", playerId: player.id, spectatorId: null };
           send(socket, MessageType.ROOM_JOINED, {
             room_code: room.code,
             player_id: player.id,
@@ -200,10 +234,11 @@ export function createGameServer(options = {}) {
           }
           const result = room.sessionStatus(String(payload.reconnect_token || ""));
           if (result.status === "finished") {
-            const player = result.player;
+            const member = result.player || result.spectator;
             room.leaveByToken(String(payload.reconnect_token || ""));
             send(socket, MessageType.SESSION_STATUS, {
-              status: "finished", room_code: room.code, player_id: player.id,
+              status: "finished", room_code: room.code, role: result.role || "player",
+              player_id: result.player?.id || "", spectator_id: result.spectator?.id || "",
             });
             roomManager.removeIfEmpty(room);
             return;
@@ -212,22 +247,30 @@ export function createGameServer(options = {}) {
             send(socket, MessageType.SESSION_STATUS, { status: "invalid", reason: "token_invalid" });
             return;
           }
-          const player = result.player;
+          const member = result.player || result.spectator;
           send(socket, MessageType.SESSION_STATUS, {
-            status: "active", room_code: room.code, player_id: player.id,
-            nickname: player.nickname, started: room.started,
+            status: "active", room_code: room.code, role: result.role || "player",
+            player_id: result.player?.id || "", spectator_id: result.spectator?.id || "",
+            nickname: member.nickname, started: room.started,
             round: Number(room.publicState?.leg_number || 0),
           });
           return;
         }
 
         if (type === MessageType.LEAVE_ROOM) {
-          const { room, playerId } = socket.context;
-          if (!room || !playerId) throw new ProtocolError("NOT_IN_ROOM", "Join a room first");
-          room.leave(playerId, socket);
-          socket.context = { ...socket.context, room: null, playerId: null };
-          send(socket, MessageType.ROOM_LEFT, { room_code: room.code, player_id: playerId });
-          room.broadcast(MessageType.PLAYER_LEFT, { player_id: playerId, reconnecting: false });
+          const { room, role, playerId, spectatorId } = socket.context;
+          if (!room) throw new ProtocolError("NOT_IN_ROOM", "Join a room first");
+          if (role === "spectator") {
+            room.leaveSpectator(spectatorId, socket);
+            socket.context = { ...socket.context, room: null, role: "", playerId: null, spectatorId: null };
+            send(socket, MessageType.ROOM_LEFT, { room_code: room.code, role: "spectator", spectator_id: spectatorId });
+          } else {
+            if (!playerId) throw new ProtocolError("NOT_IN_ROOM", "Join a room first");
+            room.leave(playerId, socket);
+            socket.context = { ...socket.context, room: null, role: "", playerId: null, spectatorId: null };
+            send(socket, MessageType.ROOM_LEFT, { room_code: room.code, role: "player", player_id: playerId });
+            room.broadcast(MessageType.PLAYER_LEFT, { player_id: playerId, reconnecting: false });
+          }
           room.broadcastLobby();
           roomManager.removeIfEmpty(room);
           return;
@@ -237,66 +280,83 @@ export function createGameServer(options = {}) {
           if (socket.context.room) throw new ProtocolError("ALREADY_IN_ROOM", "Use LEAVE_ROOM for an attached session");
           const room = roomManager.getRoom(payload.room_code);
           if (!room) throw new ProtocolError("ROOM_NOT_FOUND", "Room code was not found");
-          const player = room.leaveByToken(String(payload.reconnect_token || ""));
-          send(socket, MessageType.ROOM_LEFT, { room_code: room.code, player_id: player.id });
-          room.broadcast(MessageType.PLAYER_LEFT, { player_id: player.id, reconnecting: false, cpu_takeover: room.started && !room.isGameFinished() });
+          const result = room.leaveByToken(String(payload.reconnect_token || ""));
+          const member = result.member;
+          send(socket, MessageType.ROOM_LEFT, {
+            room_code: room.code, role: result.role,
+            player_id: result.role === "player" ? member.id : "",
+            spectator_id: result.role === "spectator" ? member.id : "",
+          });
+          if (result.role === "player") room.broadcast(MessageType.PLAYER_LEFT, { player_id: member.id, reconnecting: false, cpu_takeover: room.started && !room.isGameFinished() });
           room.broadcastLobby();
           roomManager.removeIfEmpty(room);
           return;
         }
 
         if (type === MessageType.UPDATE_NICKNAME) {
-          const { room, playerId } = socket.context;
+          const { room, playerId, spectatorId, role } = socket.context;
+          if (role === "spectator") {
+            if (!room || !spectatorId) throw new ProtocolError("NOT_IN_ROOM", "Join a room first");
+            room.updateSpectatorNickname(spectatorId, validatedNickname(payload.nickname));
+            return;
+          }
           if (!room || !playerId) throw new ProtocolError("NOT_IN_ROOM", "Join a room first");
           room.updateNickname(playerId, validatedNickname(payload.nickname));
           return;
         }
 
         if (type === MessageType.PLAYER_INPUT) {
-          const { room, playerId } = socket.context;
+          const { room, playerId, role } = socket.context;
+          if (role === "spectator") throw new ProtocolError("SPECTATOR_FORBIDDEN", "Spectators cannot send player input");
           if (!room || !playerId) throw new ProtocolError("NOT_IN_ROOM", "Join a room first");
           room.setInput(playerId, payload.direction, payload.sequence);
           return;
         }
 
         if (type === MessageType.LOBBY_CPU) {
-          const { room, playerId } = socket.context;
+          const { room, playerId, role } = socket.context;
+          if (role === "spectator") throw new ProtocolError("SPECTATOR_FORBIDDEN", "Spectators cannot edit player slots");
           if (!room || !playerId) throw new ProtocolError("NOT_IN_ROOM", "Join a room first");
           room.setCpuCount(playerId, payload.count);
           return;
         }
 
         if (type === MessageType.START_GAME) {
-          const { room, playerId } = socket.context;
+          const { room, playerId, role } = socket.context;
+          if (role === "spectator") throw new ProtocolError("SPECTATOR_FORBIDDEN", "Spectators cannot start games");
           if (!room || !playerId) throw new ProtocolError("NOT_IN_ROOM", "Join a room first");
           room.startGame(playerId, payload.fill_cpu !== false);
           return;
         }
 
         if (type === MessageType.GAME_ACTION) {
-          const { room, playerId } = socket.context;
+          const { room, playerId, role } = socket.context;
+          if (role === "spectator") throw new ProtocolError("SPECTATOR_FORBIDDEN", "TV spectators cannot perform game actions");
           if (!room || !playerId) throw new ProtocolError("NOT_IN_ROOM", "Join a room first");
           room.requestGameAction(playerId, payload.action, payload.request_id);
           return;
         }
 
         if (type === MessageType.GAME_COMMIT) {
-          const { room, playerId } = socket.context;
+          const { room, playerId, role } = socket.context;
+          if (role === "spectator") throw new ProtocolError("SPECTATOR_FORBIDDEN", "TV spectators cannot commit game state");
           if (!room || !playerId) throw new ProtocolError("NOT_IN_ROOM", "Join a room first");
           room.commitGame(playerId, payload);
           return;
         }
 
         if (type === MessageType.GAME_READY) {
-          const { room, playerId } = socket.context;
+          const { room, playerId, role } = socket.context;
+          if (role === "spectator") throw new ProtocolError("SPECTATOR_FORBIDDEN", "TV spectators do not participate in turn readiness");
           if (!room || !playerId) throw new ProtocolError("NOT_IN_ROOM", "Join a room first");
           room.acknowledgeGameReady(playerId, payload.game_sequence);
           return;
         }
 
         if (type === MessageType.CHAT_SEND) {
-          const { room, playerId } = socket.context;
-          if (!room || !playerId) throw new ProtocolError("NOT_IN_ROOM", "Join a room first");
+          const { room, playerId, spectatorId, role } = socket.context;
+          const memberId = role === "spectator" ? spectatorId : playerId;
+          if (!room || !memberId) throw new ProtocolError("NOT_IN_ROOM", "Join a room first");
           const now = Date.now();
           if (now - socket.context.lastChatAt < 350) {
             throw new ProtocolError("CHAT_RATE_LIMIT", "Please wait before sending another message");
@@ -304,11 +364,13 @@ export function createGameServer(options = {}) {
           const text = safeChatText(payload.text);
           if (!text) throw new ProtocolError("EMPTY_CHAT", "Chat message cannot be empty");
           socket.context.lastChatAt = now;
-          const player = room.players.get(playerId);
+          const member = role === "spectator" ? room.spectators.get(spectatorId) : room.players.get(playerId);
           room.broadcast(MessageType.CHAT_MESSAGE, {
             room_code: room.code,
-            player_id: playerId,
-            nickname: player.nickname,
+            player_id: role === "player" ? playerId : "",
+            spectator_id: role === "spectator" ? spectatorId : "",
+            role,
+            nickname: member.nickname,
             text,
             server_time: now,
           });
@@ -321,8 +383,15 @@ export function createGameServer(options = {}) {
     });
 
     socket.on("close", () => {
-      const { room, playerId } = socket.context;
-      if (!room || !playerId) return;
+      const { room, playerId, spectatorId, role } = socket.context;
+      if (!room) return;
+      if (role === "spectator") {
+        const spectator = room.markSpectatorDisconnected(spectatorId, socket);
+        if (spectator) room.broadcastLobby();
+        roomManager.removeIfEmpty(room);
+        return;
+      }
+      if (!playerId) return;
       const player = room.markDisconnected(playerId, socket);
       if (player) {
         room.broadcast(MessageType.PLAYER_LEFT, { player_id: playerId, reconnecting: true });

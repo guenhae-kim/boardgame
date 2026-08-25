@@ -20,6 +20,7 @@ signal nickname_change_requested(nickname: String)
 @onready var fill_cpu: CheckButton = $Root/LobbyPanel/Margin/Content/HostControls/CpuPanel/FillCpu
 @onready var start_button: Button = $Root/LobbyPanel/Margin/Content/HostControls/StartButton
 @onready var guest_hint: Label = $Root/LobbyPanel/Margin/Content/GuestHint
+@onready var spectator_status: Label = $Root/LobbyPanel/Margin/Content/SpectatorStatus
 @onready var toast: CamelToast = $Root/Toast
 
 var _room_code := ""
@@ -35,7 +36,7 @@ func _ready() -> void:
 	_build_settings()
 
 
-func update_lobby(payload: Dictionary, local_player_id: String) -> void:
+func update_lobby(payload: Dictionary, local_player_id: String, local_role: String = "player") -> void:
 	_room_code = str(payload.get("room_code", "----"))
 	room_label.text = _room_code
 	var players := payload.get("players", []) as Array
@@ -46,6 +47,9 @@ func update_lobby(payload: Dictionary, local_player_id: String) -> void:
 	var started := bool(payload.get("started", false))
 	host_controls.visible = is_host and not started
 	guest_hint.visible = not is_host and not started
+	guest_hint.text = "TV 화면에서 경주 시작을 기다리는 중…" if local_role == "spectator" else "방장이 경주를 시작하기를 기다리는 중…"
+	var spectator_count := int(payload.get("spectator_count", (payload.get("spectators", []) as Array).size()))
+	spectator_status.text = "📺 TV 관전자 %d명" % spectator_count
 	start_button.disabled = started
 
 

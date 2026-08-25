@@ -56,7 +56,7 @@ layout_mode = 1
 anchors_preset = 12
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_top = -620.0
+offset_top = -760.0
 grow_horizontal = 2
 grow_vertical = 0
 theme_override_styles/panel = SubResource("SheetPanel")
@@ -101,12 +101,27 @@ max_length = 4
 alignment = 1
 virtual_keyboard_type = 6
 
-[node name="JoinButton" type="Button" parent="Sheet/Margin/Content"]
+[node name="RoleTitle" type="Label" parent="Sheet/Margin/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.34, 0.24, 0.16, 1)
+theme_override_font_sizes/font_size = 28
+text = "어떻게 참가할까요?"
+horizontal_alignment = 1
+
+[node name="PlayerJoinButton" type="Button" parent="Sheet/Margin/Content"]
 custom_minimum_size = Vector2(0, 96)
 layout_mode = 2
 theme_override_font_sizes/font_size = 40
 disabled = true
-text = "문을 열고 참가하기"
+text = "🐶  플레이어로 참가"
+
+[node name="SpectatorJoinButton" type="Button" parent="Sheet/Margin/Content"]
+custom_minimum_size = Vector2(0, 88)
+layout_mode = 2
+theme_override_font_sizes/font_size = 34
+disabled = true
+text = "📺  TV 관전 모드"
+tooltip_text = "플레이어 자리를 차지하지 않고 전체 보드를 관전합니다"
 
 [node name="CancelButton" type="Button" parent="Sheet/Margin/Content"]
 custom_minimum_size = Vector2(0, 74)

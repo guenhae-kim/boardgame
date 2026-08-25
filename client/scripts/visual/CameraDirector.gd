@@ -9,6 +9,15 @@ var state := CameraState.BOARD_OVERVIEW
 var _dragging := false
 var _overview_offset := Vector3.ZERO
 var _overview_zoom := 1.0
+var broadcast_mode := false
+
+
+func set_broadcast_mode(enabled: bool) -> void:
+	broadcast_mode = enabled
+	_dragging = false
+	_overview_offset = Vector3.ZERO
+	_overview_zoom = 1.0
+	_apply_board_pose()
 
 
 func setup(target_camera: Camera3D) -> void:
@@ -17,9 +26,12 @@ func setup(target_camera: Camera3D) -> void:
 	_apply_board_pose()
 
 
-func show_board(duration: float = 0.55) -> void:
+func show_board(duration: float = 0.55, reset_manual_view: bool = true) -> void:
 	state = CameraState.BOARD_OVERVIEW
-	camera.fov = 55.0 if _is_portrait() else 80.0
+	if reset_manual_view:
+		_overview_offset = Vector3.ZERO
+		_overview_zoom = 1.0
+	camera.fov = 55.0 if _is_portrait() else (62.0 if broadcast_mode else 63.0)
 	var pose := _board_pose()
 	var target := (pose[1] as Vector3) + _overview_offset
 	var position := target + ((pose[0] as Vector3) - (pose[1] as Vector3)) * _overview_zoom
@@ -32,14 +44,18 @@ func _board_pose() -> Array:
 		# an almost square silhouette, using the tall mobile play area without
 		# cropping the prediction and betting zones at either side.
 		return [Vector3(2.6, 15.25, 3.2), Vector3(0, 0, 0.2)]
-	return [Vector3(0, 10.8, 12.8), Vector3(0, 0, -0.2)]
+	# Landscape uses a close 42-degree three-quarter view. The wider screen is
+	# spent on larger board components, not additional decorative scenery.
+	# Aim slightly toward the near edge so the complete track sits above the
+	# large landscape hand instead of hiding a low stack behind the cards.
+	return [Vector3(0, 10.55, 12.15), Vector3(0, 0, 0.9)] if broadcast_mode else [Vector3(0, 10.3, 11.4), Vector3(0, 0, 1.05)]
 
 
 func _apply_board_pose() -> void:
 	if camera == null:
 		return
 	var pose := _board_pose()
-	camera.fov = 55.0 if _is_portrait() else 80.0
+	camera.fov = 55.0 if _is_portrait() else (62.0 if broadcast_mode else 63.0)
 	camera.global_transform = Transform3D(Basis.IDENTITY, pose[0]).looking_at(pose[1], Vector3.UP)
 
 
@@ -54,7 +70,7 @@ func _on_viewport_size_changed() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if camera == null or state != CameraState.BOARD_OVERVIEW:
+	if camera == null or state != CameraState.BOARD_OVERVIEW or broadcast_mode:
 		return
 	if event is InputEventMouseButton:
 		var mouse := event as InputEventMouseButton

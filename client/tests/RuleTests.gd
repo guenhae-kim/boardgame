@@ -155,11 +155,18 @@ func _test_leg_scoring_breakdown_and_event_order() -> void:
 	CamelGameDebug.force_stacks(last_roll, {2: ["blue"], 4: ["red"], 6: ["yellow"], 8: ["green"], 10: ["purple"], 14: ["white"], 15: ["black"]})
 	last_roll.state.remaining_dice = ["blue", "gray"]
 	last_roll.state.pyramid_tickets_remaining = 1
-	last_roll.force_next_roll("blue", 1)
+	last_roll.set_authoritative_physical_roll("blue", 1, {"physics_settled": true, "throw_spec": {"impulse": [1.0, 2.0, 3.0]}, "physics_frames": [{"position": [0.0, 0.5, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0]}]})
 	var result := last_roll.apply_action("player_1", CamelAction.new(CamelAction.ROLL_DIE))
 	var types: Array = []
+	var physical_event: CamelEvent
 	for event_value in result.get("events", []):
-		types.append((event_value as CamelEvent).type)
+		var typed_event := event_value as CamelEvent
+		types.append(typed_event.type)
+		if typed_event.type == CamelEvent.DIE_ROLLED:
+			physical_event = typed_event
+	_check(physical_event != null and int(physical_event.data.get("value", 0)) == 1 and bool(physical_event.data.get("physics_settled", false)), "rules consume the authority face only after physics settle")
+	_check((physical_event.data.get("throw_spec", {}) as Dictionary).has("impulse"), "authoritative throw specification is preserved for synchronized client replay")
+	_check((physical_event.data.get("physics_frames", []) as Array).size() == 1, "authority physics trajectory is preserved so remote dice shows the same final face")
 	_check(types.find(CamelEvent.DIE_ROLLED) < types.find(CamelEvent.CAMEL_MOVED), "last die result is emitted before piece movement")
 	_check(types.find(CamelEvent.CAMEL_MOVED) < types.find(CamelEvent.TURN_ENDED), "piece movement completes before turn-end presentation")
 	_check(types.find(CamelEvent.TURN_ENDED) < types.find(CamelEvent.LEG_ENDED), "round scoring starts only after turn-end overview event")

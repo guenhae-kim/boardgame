@@ -50,6 +50,12 @@ func _run() -> void:
 	_check(online.online_ui._hand_row.get_child_count() == 6, "hand contains prediction cards plus the spectator tool, never acquired betting tickets")
 	_check((online.online_ui._ticket_rows["player_1"] as HBoxContainer).get_child_count() == 1, "acquired betting ticket appears beside its owner HUD")
 	_check((online.online_ui._history_slots[0].get_node("Value") as Label).text == "3" and (online.online_ui._history_slots[1].get_node("Value") as Label).text == "1", "dice history uses clear face values without cramped color text")
+	var host_hud := online.online_ui._player_cards["player_1"] as PanelContainer
+	var host_portrait := host_hud.get_node("Margin/Box/Portrait") as TextureRect
+	_check(host_hud.custom_minimum_size.x >= 220.0 and host_portrait.custom_minimum_size.x >= 74.0, "landscape uses a dedicated large player HUD and portrait layout")
+	_check((online.online_ui._hand_row.get_child(0) as Button).custom_minimum_size.y >= 138.0, "landscape hand cards remain large and fully interactive")
+	_check(online.online_ui._top_panel.size.y >= 50.0, "landscape round and dice tray is immediately readable")
+	_check(not online._defer_state_refresh, "online HUD is no longer held after authoritative event presentation completes")
 	_check(not online.dice.gesture_enabled, "online dice cannot be triggered by the hidden pyramid gesture")
 	online.online_ui.receive_chat("Friend", "red please three", "player_2")
 	_check(online.online_ui._hud_chat_bubbles.has("player_2"), "room chat appears as a visible speech bubble beside its sender HUD")
@@ -62,10 +68,14 @@ func _run() -> void:
 	online.online_ui.online_action_requested.connect(func(action: CamelAction): submitted.append(action))
 	online.online_ui._select_card("red")
 	_check(submitted.is_empty(), "selecting a color card never submits a dice action")
+	await create_timer(0.2).timeout
+	_check((online.online_ui._hand_cards["red"] as Button).scale.x > 1.1, "selected hand card visibly pops above the fan")
 	var unlocked_before_legacy_roll := online._turn_unlocked
 	online._run_roll("", 0, 1.0, true)
 	_check(online._turn_unlocked == unlocked_before_legacy_roll and submitted.is_empty(), "legacy world roll input is ignored in OnlineGame")
 	_check(online.board._enabled_targets.has("prediction:winner") and online.board._enabled_targets.has("prediction:loser"), "selecting a hand card highlights only prediction zones")
+	var winner_mesh := online.board._interaction_meshes["prediction:winner"] as MeshInstance3D
+	_check((winner_mesh.material_override as StandardMaterial3D).emission_energy_multiplier >= 1.2, "legal prediction target receives a strong pulsing board highlight")
 	online.online_ui.handle_board_target("prediction", "winner")
 	_check(not submitted.is_empty() and (submitted[0] as CamelAction).type == CamelAction.FINAL_BET, "clicking the highlighted board zone creates a final-bet Action")
 	online.online_ui._can_act = true
@@ -75,6 +85,29 @@ func _run() -> void:
 	rules.state.current_player_index = 2
 	var cpu_action := cpu.choose_action(rules, "cpu_1")
 	_check(cpu_action is CamelAction and rules.validate_action("cpu_1", cpu_action).is_empty(), "CPU controller returns a legal instance of the same Action type as a human")
+	var tv_online := packed.instantiate() as CamelOnlineGameController
+	root.add_child(tv_online)
+	tv_online._network.set_process(false)
+	for unused in 3: await process_frame
+	tv_online.start_room({
+		"room_code": "TEST", "role": "spectator", "spectator_id": "spectator_1",
+		"lobby": {"room_code": "TEST", "host_player_id": "player_1", "max_slots": 4, "players": roster, "spectator_count": 1},
+	})
+	tv_online._on_game_update({
+		"room_code": "TEST", "role": "spectator", "spectator_id": "spectator_1",
+		"game_sequence": 1, "actor_id": "", "events": [],
+		"public_state": CamelGameProjection.public_state(rules.state),
+		"game_busy": false, "turn_deadline_ms": 60000, "server_time": 1,
+	})
+	await create_timer(0.35).timeout
+	_check(tv_online.is_tv_spectator and tv_online.local_player_id.is_empty(), "TV client has a spectator identity and never claims a player slot")
+	_check(tv_online.private_state.is_empty() and tv_online.online_ui._private_cards.is_empty(), "TV client builds its board without receiving a private hand")
+	_check(not tv_online.online_ui._action_panel.visible and not tv_online.online_ui._roll_button.visible, "TV layout contains no hand or gameplay action controls")
+	_check(tv_online.online_ui._tv_layout.visible and tv_online.online_ui._tv_layout.fullscreen_button.visible, "TV layout exposes a user-gesture fullscreen control")
+	_check(tv_online.camera_director.broadcast_mode and tv_online.camera_director.state == CamelCameraDirector.CameraState.BOARD_OVERVIEW, "TV broadcast camera defaults to the quarter-view board overview")
+	await tv_online.camera_director.focus_space(tv_online.board.track_point(10), 0.01)
+	await tv_online._play_event(CamelEvent.new(CamelEvent.TURN_ENDED, {"player_id": "player_1"}))
+	_check(tv_online.camera_director.state == CamelCameraDirector.CameraState.BOARD_OVERVIEW, "TV broadcast camera returns to overview after a temporary game-event closeup")
 	print("Online client flow: ", "FAILED" if failed else "PASSED")
 	quit(1 if failed else 0)
 

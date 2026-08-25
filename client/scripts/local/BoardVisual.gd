@@ -13,7 +13,7 @@ const CAMEL_COLORS := {
 	"red": Color("ef5350"), "purple": Color("a66cff"), "white": Color("f4f0df"),
 	"black": Color("24262d"),
 }
-const PIECE_HEIGHT := 0.68
+const PIECE_HEIGHT := 0.76
 const TARGET_ARROW := preload("res://assets/third_party/kenney/ui/target_arrow.png")
 
 var piece_visuals: Dictionary = {}
@@ -40,18 +40,19 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_highlight_time += delta
-	var pulse := 1.0 + sin(_highlight_time * 5.5) * 0.055
+	var pulse := 1.0 + sin(_highlight_time * 5.5) * 0.075
 	for key in _interaction_meshes:
 		var mesh := _interaction_meshes[key] as MeshInstance3D
 		var enabled := _enabled_targets.has(key)
 		var base_scale := _interaction_base_scales.get(key, Vector3.ONE) as Vector3
 		var base_position := _interaction_base_positions.get(key, mesh.position) as Vector3
-		mesh.scale = base_scale * (1.13 * pulse if enabled else 1.0)
-		mesh.position = base_position + (Vector3.UP * (0.14 + sin(_highlight_time * 5.5) * 0.05) if enabled else Vector3.ZERO)
+		mesh.scale = base_scale * (1.20 * pulse if enabled else 1.0)
+		mesh.position = base_position + (Vector3.UP * (0.22 + sin(_highlight_time * 5.5) * 0.07) if enabled else Vector3.ZERO)
 		var marker := _interaction_markers.get(key) as Sprite3D
 		if marker != null:
 			marker.visible = enabled
-			marker.position.y = 1.18 + sin(_highlight_time * 5.5) * 0.13
+			marker.position.y = 0.92 + sin(_highlight_time * 5.5) * 0.13
+			marker.scale = Vector3.ONE * (1.0 + sin(_highlight_time * 5.5) * 0.09)
 
 
 func sync_state(state: CamelGameState) -> void:
@@ -119,8 +120,8 @@ func set_interaction(target_type: String = "", valid_ids: Array = []) -> void:
 		var material := mesh.material_override as StandardMaterial3D
 		var enabled := _enabled_targets.has(key)
 		material.emission_enabled = enabled
-		material.emission = material.albedo_color.lightened(0.18)
-		material.emission_energy_multiplier = 0.62 if enabled else 0.0
+		material.emission = material.albedo_color.lightened(0.32)
+		material.emission_energy_multiplier = 1.25 if enabled else 0.0
 
 
 func play_take_bet(data: Dictionary) -> void:
@@ -271,7 +272,17 @@ func track_point(position: int) -> Vector3:
 
 
 func piece_position(space: int, level: int) -> Vector3:
-	return track_point(space) + Vector3(0, 0.5 + float(level) * PIECE_HEIGHT, 0)
+	var base := track_point(space) + Vector3(0, 0.5 + float(level) * PIECE_HEIGHT, 0)
+	if level <= 0:
+		return base
+	# Tiny alternating offsets expose silhouettes and contact shadows without
+	# turning a true vertical stack into a staircase.
+	var display_space := clampi(space, 1, CamelGameState.TRACK_LENGTH)
+	var angle := TAU * float(display_space - 1) / float(CamelGameState.TRACK_LENGTH) - PI * 0.5
+	var tangent := Vector3(-sin(angle), 0, cos(angle)).normalized()
+	var side := -1.0 if level % 2 == 0 else 1.0
+	var amount := minf(0.045 + float(level) * 0.025, 0.14)
+	return base + tangent * side * amount
 
 
 func _move_group(piece_ids: Array, targets: Array, duration: float, jump_height: float) -> void:
@@ -638,7 +649,7 @@ func _register_interaction(parent: Node3D, target_type: String, target_id: Strin
 		_interaction_base_positions[key] = visual.position
 		var marker := Sprite3D.new()
 		marker.texture = TARGET_ARROW
-		marker.pixel_size = 0.045
+		marker.pixel_size = 0.035
 		marker.modulate = Color("fff1a1")
 		marker.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 		marker.no_depth_test = true

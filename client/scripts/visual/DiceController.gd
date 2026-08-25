@@ -10,6 +10,11 @@ const FACE_NORMALS := {
 	2: [Vector3.RIGHT, Vector3.LEFT],
 	3: [Vector3.FORWARD, Vector3.BACK],
 }
+const LINEAR_SETTLE_THRESHOLD := 0.18
+const ANGULAR_SETTLE_THRESHOLD := 0.62
+const SETTLE_DURATION := 0.18
+const MIN_ROLL_DURATION := 0.56
+const SOFT_DAMPING_AFTER := 0.50
 
 var die: RigidBody3D
 var _rng := RandomNumberGenerator.new()
@@ -23,6 +28,8 @@ var _gesture_start := Vector2.ZERO
 var _gesture_last := Vector2.ZERO
 var _shake_distance := 0.0
 var _last_collision_msec := 0
+var last_roll_simulated_seconds := 0.0
+var last_roll_frames: Array = []
 
 
 func _ready() -> void:
@@ -32,60 +39,136 @@ func _ready() -> void:
 	_build_die()
 
 
-func play_roll(die_id: String, forced_result: int = 0, throw_strength: float = 1.0) -> int:
+func create_throw_spec(throw_strength: float = 1.0) -> Dictionary:
 	throw_strength = clampf(throw_strength, 1.0, 3.4)
+	var lateral_scale := 1.35 + (throw_strength - 1.0) * 0.72
+	return {
+		"strength": throw_strength,
+		"spawn": [0.0, 2.72, 0.0],
+		"rotation": [_rng.randf_range(-1.0, 1.0), _rng.randf_range(-1.0, 1.0), _rng.randf_range(-1.0, 1.0)],
+		"impulse": [
+			_rng.randf_range(-2.4, 2.4) * lateral_scale,
+			_rng.randf_range(1.2, 2.4) - (throw_strength - 1.0) * 0.4,
+			_rng.randf_range(-2.0, 2.0) * lateral_scale,
+		],
+		"torque": [
+			_rng.randf_range(9.0, 14.0) * throw_strength,
+			_rng.randf_range(8.0, 13.0) * throw_strength,
+			_rng.randf_range(9.0, 14.0) * throw_strength,
+		],
+	}
+
+
+func play_roll(die_id: String, _debug_requested_result: int = 0, throw_strength: float = 1.0) -> int:
+	# Production and local play both consume the face left by physics. The second
+	# argument remains only for source compatibility with old debug callers; it
+	# never rotates or snaps the die to a requested number.
+	return await play_roll_with_spec(die_id, create_throw_spec(throw_strength))
+
+
+func play_roll_with_spec(die_id: String, throw_spec: Dictionary) -> int:
+	var throw_strength := clampf(float(throw_spec.get("strength", 1.0)), 1.0, 3.4)
 	_set_die_color(die_id)
 	die.freeze = true
 	die.visible = false
-	die.position = Vector3(0, 2.72, 0)
-	die.rotation = Vector3(_rng.randf_range(-1.0, 1.0), _rng.randf_range(-1.0, 1.0), _rng.randf_range(-1.0, 1.0))
+	die.position = _spec_vector(throw_spec, "spawn", Vector3(0, 2.72, 0))
+	die.rotation = _spec_vector(throw_spec, "rotation", Vector3.ZERO)
 	die.linear_velocity = Vector3.ZERO
 	die.angular_velocity = Vector3.ZERO
+	die.linear_damp = 2.15
+	die.angular_damp = 2.65
+	die.physics_material_override.bounce = 0.58
 	await _release_from_pyramid(throw_strength)
 	die.visible = true
 	die.freeze = false
-	# The die drops through the pyramid hatch; lateral force and torque make it
-	# bounce and roll while the tall arena walls keep it contained.
-	var lateral_scale := 1.35 + (throw_strength - 1.0) * 0.72
-	die.apply_central_impulse(Vector3(
-		_rng.randf_range(-2.4, 2.4) * lateral_scale,
-		_rng.randf_range(1.2, 2.4) - (throw_strength - 1.0) * 0.4,
-		_rng.randf_range(-2.0, 2.0) * lateral_scale
-	))
-	die.apply_torque_impulse(Vector3(
-		_rng.randf_range(9.0, 14.0),
-		_rng.randf_range(8.0, 13.0),
-		_rng.randf_range(9.0, 14.0)
-	) * throw_strength)
+	die.apply_central_impulse(_spec_vector(throw_spec, "impulse", Vector3(2.0, 1.5, -1.5)))
+	die.apply_torque_impulse(_spec_vector(throw_spec, "torque", Vector3(18.0, 20.0, 16.0)))
+	last_roll_frames.clear()
+	_record_authority_frame()
 
 	var elapsed := 0.0
 	var stable := 0.0
-	# Always show a readable tumble. Previously a lucky early collision could end
-	# the loop almost immediately, while a fast die was snapped to the server
-	# result at the timeout. Both cases made the visible roll feel unrelated.
-	while elapsed < 1.05 and (elapsed < 0.72 or stable < 0.14):
+	var damping_applied := false
+	# A result exists only after both velocities stay below their thresholds for
+	# a continuous window. A slow roll is calmed with damping, never orientation
+	# correction, so the final face always remains a physical outcome.
+	while elapsed < MIN_ROLL_DURATION or stable < SETTLE_DURATION:
 		await get_tree().physics_frame
 		var delta := 1.0 / float(Engine.physics_ticks_per_second)
 		elapsed += delta
 		if die.position.y < -0.7 or absf(die.position.x) > 3.75 or absf(die.position.z) > 2.75:
-			_recover_inside_arena()
-		if die.linear_velocity.length() < 0.12 and die.angular_velocity.length() < 0.16:
+			_recover_inside_arena(throw_spec)
+		if not damping_applied and elapsed >= SOFT_DAMPING_AFTER:
+			damping_applied = true
+			die.linear_damp = 34.0
+			die.angular_damp = 44.0
+		if elapsed >= 0.82:
+			# Remove lingering tabletop drift without altering orientation. Gravity and
+			# contacts still decide which face lands upward.
+			die.physics_material_override.bounce = 0.08
+			die.linear_velocity *= 0.56
+			die.angular_velocity *= 0.50
+		if die.sleeping or (die.linear_velocity.length() < LINEAR_SETTLE_THRESHOLD and die.angular_velocity.length() < ANGULAR_SETTLE_THRESHOLD):
 			stable += delta
 		else:
 			stable = 0.0
+		_record_authority_frame()
 	_hatch.scale.x = 1.0
+	last_roll_simulated_seconds = elapsed
 	var result := _read_top_face()
-	if forced_result in [1, 2, 3]:
-		result = forced_result
-		await _settle_to_result(result)
-	else:
-		# Local/authority rolls use the face that the rigid body actually left on
-		# top. There is no post-roll orientation correction in this path.
-		die.linear_velocity = Vector3.ZERO
-		die.angular_velocity = Vector3.ZERO
-		die.freeze = true
+	die.freeze = true
+	die.linear_damp = 2.15
+	die.angular_damp = 2.65
+	die.physics_material_override.bounce = 0.58
 	await get_tree().create_timer(0.06).timeout
 	return result
+
+
+func play_authority_replay(die_id: String, frames: Array) -> int:
+	# Remote clients do not run a second, potentially divergent simulation. They
+	# replay the transforms produced by the authority's real RigidBody roll, so
+	# the visible final face and every bounce match the committed game result.
+	_set_die_color(die_id)
+	die.freeze = true
+	die.visible = true
+	die.linear_velocity = Vector3.ZERO
+	die.angular_velocity = Vector3.ZERO
+	for frame_value in frames:
+		var frame := frame_value as Dictionary
+		die.position = _array_vector3(frame.get("position", []), die.position)
+		die.quaternion = _array_quaternion(frame.get("rotation", []), die.quaternion)
+		await get_tree().physics_frame
+	last_roll_simulated_seconds = float(frames.size()) / float(Engine.physics_ticks_per_second)
+	return _read_top_face()
+
+
+func _record_authority_frame() -> void:
+	var rotation := die.quaternion.normalized()
+	last_roll_frames.append({
+		"position": [die.position.x, die.position.y, die.position.z],
+		"rotation": [rotation.x, rotation.y, rotation.z, rotation.w],
+	})
+
+
+func _array_vector3(raw_value: Variant, fallback: Vector3) -> Vector3:
+	var raw := raw_value as Array
+	if raw.size() != 3:
+		return fallback
+	return Vector3(float(raw[0]), float(raw[1]), float(raw[2]))
+
+
+func _array_quaternion(raw_value: Variant, fallback: Quaternion) -> Quaternion:
+	var raw := raw_value as Array
+	if raw.size() != 4:
+		return fallback
+	return Quaternion(float(raw[0]), float(raw[1]), float(raw[2]), float(raw[3])).normalized()
+
+
+func _spec_vector(spec: Dictionary, key: String, fallback: Vector3) -> Vector3:
+	var raw := spec.get(key, []) as Array
+	if raw.size() != 3:
+		return fallback
+	return Vector3(float(raw[0]), float(raw[1]), float(raw[2]))
 
 
 func hide_result_die() -> void:
@@ -102,47 +185,6 @@ func _read_top_face() -> int:
 				best_dot = world_normal.dot(Vector3.UP)
 				best_result = int(result)
 	return best_result
-
-
-func _orient_top(result: int) -> void:
-	die.rotation = _target_rotation(result)
-
-
-func _target_rotation(result: int) -> Vector3:
-	match result:
-		2:
-			return Vector3(0, 0, -PI * 0.5)
-		3:
-			return Vector3(PI * 0.5, 0, 0)
-		_:
-			return Vector3.ZERO
-
-
-func _settle_to_result(result: int) -> void:
-	# Remote clients must reproduce the authority's face, but a full extra spin
-	# after the die stopped looked fake. Rotate only by the shortest arc needed
-	# to put the requested face upward (at most a quarter turn in normal cases).
-	var current_quaternion := die.quaternion.normalized()
-	var best_world_normal := Vector3.DOWN
-	var best_dot := -INF
-	for local_normal in FACE_NORMALS[result]:
-		var world_normal: Vector3 = die.global_basis * local_normal
-		var dot := world_normal.dot(Vector3.UP)
-		if dot > best_dot:
-			best_dot = dot
-			best_world_normal = world_normal.normalized()
-	var correction := Quaternion(best_world_normal, Vector3.UP)
-	var target_quaternion := (correction * current_quaternion).normalized()
-	die.linear_velocity = Vector3.ZERO
-	die.angular_velocity = Vector3.ZERO
-	die.freeze = true
-	var tween := create_tween()
-	tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	tween.tween_method(func(weight: float): die.quaternion = current_quaternion.slerp(target_quaternion, weight), 0.0, 1.0, 0.18)
-	tween.parallel().tween_property(die, "position:y", 0.53, 0.18).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
-	await tween.finished
-	die.quaternion = target_quaternion
-	die.position.y = 0.53
 
 
 func _build_arena() -> void:
@@ -370,12 +412,16 @@ func _on_pyramid_mouse_exited() -> void:
 	Input.set_default_cursor_shape(Input.CURSOR_ARROW)
 
 
-func _recover_inside_arena() -> void:
+func _recover_inside_arena(throw_spec: Dictionary = {}) -> void:
 	die.freeze = true
-	die.position = Vector3(_rng.randf_range(-0.4, 0.4), 2.5, _rng.randf_range(-0.4, 0.4))
+	var impulse := _spec_vector(throw_spec, "impulse", Vector3(1.6, 1.2, -1.4))
+	var torque := _spec_vector(throw_spec, "torque", Vector3(12.0, 14.0, 10.0))
+	die.position = Vector3(0, 2.5, 0)
 	die.linear_velocity = Vector3.ZERO
-	die.angular_velocity = Vector3(_rng.randf_range(-5.0, 5.0), _rng.randf_range(-5.0, 5.0), _rng.randf_range(-5.0, 5.0))
+	die.angular_velocity = Vector3.ZERO
 	die.freeze = false
+	die.apply_central_impulse(impulse * 0.55)
+	die.apply_torque_impulse(torque * 0.42)
 
 
 func _build_die() -> void:

@@ -75,10 +75,14 @@ theme_override_colors/font_color = Color(1, 0.81, 0.35, 1)
 theme_override_font_sizes/font_size = 13
 text = "코인 3"
 
+[node name="Rank" type="Label" parent="Margin/Box/Info/Stats"]
+theme_override_colors/font_color = Color(0.78, 0.9, 0.87, 1)
+theme_override_font_sizes/font_size = 11
+text = "1위"
+
 [node name="Timer" type="Label" parent="Margin/Box/Info/Stats"]
 theme_override_colors/font_color = Color(1, 0.83, 0.44, 1)
 theme_override_font_sizes/font_size = 12
 
 [node name="Tickets" type="HBoxContainer" parent="Margin/Box/Info"]
 theme_override_constants/separation = -3
-

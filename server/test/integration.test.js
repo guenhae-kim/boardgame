@@ -492,3 +492,62 @@ test("network disconnect keeps reconnect grace, then independently converts the 
   assert.equal(room.players.get(joined.payload.player_id).isCpu, true);
   assert.equal(room.players.get(joined.payload.player_id).reconnectToken, "");
 });
+test("TV spectator never occupies a player slot, receives public-only state, and cannot act", async () => {
+  const server = createGameServer();
+  await new Promise((resolve) => server.httpServer.listen(0, "127.0.0.1", resolve));
+  const { port } = server.httpServer.address();
+  const url = `ws://127.0.0.1:${port}/ws`;
+  const clients = await Promise.all(Array.from({ length: 5 }, () => connect(url)));
+  const [host, p2, p3, p4, tv] = clients;
+  host.socket.send(encode(MessageType.CREATE_ROOM, { nickname: "Host" }));
+  const created = await host.next(MessageType.ROOM_CREATED);
+  await host.next(MessageType.LOBBY_STATE);
+  for (const [index, client] of [p2, p3, p4].entries()) {
+    client.socket.send(encode(MessageType.JOIN_ROOM, { room_code: created.payload.room_code, nickname: `P${index + 2}` }));
+    await client.next(MessageType.ROOM_JOINED);
+  }
+  tv.socket.send(encode(MessageType.JOIN_SPECTATOR, { room_code: created.payload.room_code, nickname: "Living Room TV" }));
+  const joined = await tv.next(MessageType.SPECTATOR_JOINED);
+  assert.equal(joined.payload.role, "spectator");
+  assert.equal(joined.payload.players.length, 4);
+  assert.equal(joined.payload.lobby.players.length, 4);
+  assert.equal(joined.payload.lobby.spectator_count, 1);
+  const room = server.roomManager.getRoom(created.payload.room_code);
+  assert.equal(room.players.size, 4);
+  assert.equal(room.spectators.size, 1);
+
+  tv.socket.send(encode(MessageType.GAME_ACTION, {
+    request_id: "forged-tv-action",
+    action: { type: "ROLL_DIE", player_id: created.payload.player_id, data: {} },
+  }));
+  const forbidden = await tv.next(MessageType.ERROR);
+  assert.equal(forbidden.payload.code, "SPECTATOR_FORBIDDEN");
+
+  host.socket.send(encode(MessageType.START_GAME, { fill_cpu: true }));
+  await host.next(MessageType.GAME_AUTHORITY_REQUEST);
+  const publicState = {
+    phase: "PLAYING", current_player_index: 0,
+    players: [{ id: created.payload.player_id, name: "Host", money: 3 }],
+  };
+  host.socket.send(encode(MessageType.GAME_COMMIT, {
+    actor_id: "",
+    public_state: publicState,
+    authority_state: { ...publicState, server_secret: "authority-only" },
+    private_states: { [created.payload.player_id]: { final_cards: ["red"], private_secret: "hidden" } },
+    events: [],
+  }));
+  const update = await tv.next(MessageType.GAME_UPDATE);
+  assert.equal(update.payload.role, "spectator");
+  assert.deepEqual(update.payload.public_state, publicState);
+  assert.equal("private_state" in update.payload, false);
+  assert.equal("private_states" in update.payload, false);
+  assert.equal("authority_state" in update.payload, false);
+  assert.equal("reconnect_token" in update.payload, false);
+
+  tv.socket.close();
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(room.players.size, 4);
+  assert.deepEqual(room.publicState, publicState);
+  for (const client of [host, p2, p3, p4]) client.socket.close();
+  await server.close();
+});

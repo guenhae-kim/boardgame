@@ -24,6 +24,7 @@ const PLAYER_HUD_SCENE := preload("res://scenes/ui/PlayerHUD.tscn")
 const CARD_VIEW_SCENE := preload("res://scenes/ui/CardView.tscn")
 const DICE_BUTTON_SCENE := preload("res://scenes/ui/DiceButton.tscn")
 const HAND_UI_SCENE := preload("res://scenes/ui/HandUI.tscn")
+const TV_SPECTATOR_LAYOUT_SCENE := preload("res://scenes/ui/TVSpectatorLayout.tscn")
 const CHAT_ICON := preload("res://assets/ui/chat_icon.svg")
 const EMOTE_ICON := preload("res://assets/ui/emote_icon.svg")
 const HOME_ICON := preload("res://assets/ui/home_icon.svg")
@@ -66,6 +67,9 @@ var _result_panel: PanelContainer
 var _result_title: Label
 var _result_reason: Label
 var _result_label: Label
+var _tv_layout: CamelTVSpectatorLayout
+var _tv_spectator_mode := false
+var _settings_description: Label
 
 
 func _build_top_hud() -> void:
@@ -120,6 +124,9 @@ func _build_top_hud() -> void:
 	_build_right_rail()
 	_build_settings_panel()
 	_build_result_panel()
+	_tv_layout = TV_SPECTATOR_LAYOUT_SCENE.instantiate() as CamelTVSpectatorLayout
+	_tv_layout.visible = false
+	_root.add_child(_tv_layout)
 
 
 func _build_action_bar() -> void:
@@ -227,6 +234,8 @@ func refresh_state(rules: CamelGameRules) -> void:
 	_refresh_history(state.dice_history)
 	_rebuild_player_cards_if_needed(state.players)
 	var current_id := str(state.current_player().get("id", "")) if not state.players.is_empty() else ""
+	var standings := state.players.duplicate(true)
+	standings.sort_custom(func(a: Dictionary, b: Dictionary): return int(a.get("money", 0)) > int(b.get("money", 0)))
 	for index in state.players.size():
 		var player := state.players[index] as Dictionary
 		var player_id := str(player.get("id", ""))
@@ -236,6 +245,8 @@ func refresh_state(rules: CamelGameRules) -> void:
 		money.text = "코인 %d" % int(player.get("money", 0))
 		var name_label := card.get_node("Margin/Box/Info/Header/Name") as Label
 		name_label.text = "%s%s" % ["나 · " if player_id == _local_player_id else "", str(player.get("name", player_id))]
+		var rank_index := standings.find_custom(func(candidate: Dictionary): return str(candidate.get("id", "")) == player_id)
+		(card.get_node("Margin/Box/Info/Stats/Rank") as Label).text = "%d위" % (rank_index + 1)
 		(card.get_node("Margin/Box/Info/Header/CPU") as Label).text = "CPU" if bool(player.get("is_cpu", false)) else ""
 		var portrait := card.get_node("Margin/Box/Portrait") as TextureRect
 		portrait.texture = CAMEL_PORTRAITS[PLAYER_PORTRAIT_ORDER[index % PLAYER_PORTRAIT_ORDER.size()]]
@@ -260,6 +271,29 @@ func set_online_context(state: CamelGameState, private_state: Dictionary, local_
 		_set_mode("bet", CamelGameState.RACE_CAMELS)
 	else:
 		cancel_selection()
+
+
+func set_tv_spectator_mode(enabled: bool) -> void:
+	_tv_spectator_mode = enabled
+	_can_act = false if enabled else _can_act
+	if _tv_layout != null:
+		_tv_layout.visible = enabled
+	if _action_panel != null:
+		_action_panel.visible = not enabled
+	if _roll_button != null:
+		_roll_button.visible = not enabled
+	if _chat_button != null:
+		_chat_button.visible = not enabled
+	if _emote_button != null:
+		_emote_button.visible = not enabled
+	if _overview_button != null:
+		_overview_button.visible = not enabled
+	if _settings_button != null:
+		_settings_button.visible = true
+	if _settings_description != null:
+		_settings_description.text = "TV 관전을 종료하고 홈으로 돌아갑니다." if enabled else "게임에서 나가면 현재 자리는 CPU가 이어서 플레이합니다."
+	cancel_selection()
+	_apply_responsive_layout()
 
 
 func handle_board_target(target_type: String, target_id: String) -> void:
@@ -418,6 +452,7 @@ func _rebuild_hand() -> void:
 		var fan_y := absf(distance) * 3.5 * ui_scale
 		hand_card.position.y = fan_y
 		hand_card.set_meta("fan_y", fan_y)
+	_apply_responsive_layout()
 
 
 func _select_card(camel: String) -> void:
@@ -634,12 +669,12 @@ func _build_settings_panel() -> void:
 	title.add_theme_color_override("font_color", Color("493528"))
 	title.add_theme_font_size_override("font_size", 22)
 	box.add_child(title)
-	var description := Label.new()
-	description.text = "게임에서 나가면 현재 자리는 CPU가 이어서 플레이합니다."
-	description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	description.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	description.add_theme_color_override("font_color", Color("765b48"))
-	box.add_child(description)
+	_settings_description = Label.new()
+	_settings_description.text = "게임에서 나가면 현재 자리는 CPU가 이어서 플레이합니다."
+	_settings_description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_settings_description.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_settings_description.add_theme_color_override("font_color", Color("765b48"))
+	box.add_child(_settings_description)
 	var nickname_input := LineEdit.new()
 	nickname_input.name = "NicknameInput"
 	nickname_input.placeholder_text = "새 닉네임"
@@ -773,7 +808,11 @@ func _display_scale() -> float:
 	# leaving 12px labels nearly unreadable.
 	if viewport_size.y > viewport_size.x:
 		return clampf(viewport_size.x / 480.0, 1.0, 2.25)
-	return clampf(viewport_size.y / 720.0, 0.9, 1.4)
+	# With canvas_items + expand, a 1280x720 browser window is represented by
+	# roughly a 3413x1920 logical canvas.  Scaling from the logical height keeps
+	# the HUD at its intended *physical* size instead of shrinking it to a tiny
+	# desktop overlay.
+	return clampf(viewport_size.y / 720.0, 1.0, 3.25)
 
 
 func _apply_responsive_layout() -> void:
@@ -782,63 +821,154 @@ func _apply_responsive_layout() -> void:
 	var viewport_size := get_viewport().get_visible_rect().size
 	var portrait := viewport_size.y > viewport_size.x
 	var ui_scale := _display_scale()
+	if portrait:
+		_apply_portrait_layout(viewport_size, ui_scale)
+	else:
+		_apply_landscape_layout(viewport_size, ui_scale)
+	_apply_overlay_layout(viewport_size, ui_scale, portrait)
+	if _tv_spectator_mode:
+		_apply_tv_spectator_layout(viewport_size, ui_scale)
+
+
+func _apply_tv_spectator_layout(viewport_size: Vector2, ui_scale: float) -> void:
+	_action_panel.visible = false
+	_roll_button.visible = false
+	_top_panel.offset_left = viewport_size.x * 0.31
+	_top_panel.offset_right = -viewport_size.x * 0.31
+	_top_panel.offset_top = 10.0 * ui_scale
+	_top_panel.offset_bottom = 66.0 * ui_scale
+	var pad := 18.0 * ui_scale
+	var hud_size := Vector2(248, 124) * ui_scale
+	var positions := [
+		Vector2(pad, pad),
+		Vector2(viewport_size.x - hud_size.x - pad, pad),
+		Vector2(pad, viewport_size.y - hud_size.y - pad),
+		Vector2(viewport_size.x - hud_size.x - pad, viewport_size.y - hud_size.y - pad),
+	]
+	_layout_player_cards(positions, hud_size, Vector2(84, 84) * ui_scale, ui_scale, 19)
+	_style_common_hud(ui_scale, 22, 19, 0, Vector2(44, 38))
+	_chat_button.visible = false
+	_emote_button.visible = false
+	_overview_button.visible = false
+	_settings_button.position = Vector2(viewport_size.x - 66 * ui_scale, viewport_size.y * 0.56)
+
+
+func _apply_portrait_layout(viewport_size: Vector2, ui_scale: float) -> void:
 	var pad := 8.0 * ui_scale
 	_top_panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
-	_top_panel.offset_left = viewport_size.x * (0.13 if portrait else 0.31)
-	_top_panel.offset_right = -viewport_size.x * (0.13 if portrait else 0.31)
+	_top_panel.offset_left = viewport_size.x * 0.13
+	_top_panel.offset_right = -viewport_size.x * 0.13
 	_top_panel.offset_top = pad
 	_top_panel.offset_bottom = 48 * ui_scale
-	_action_panel.anchor_left = 0.04 if portrait else 0.24
-	_action_panel.anchor_right = 0.96 if portrait else 0.76
+	_action_panel.anchor_left = 0.04
+	_action_panel.anchor_right = 0.96
 	_action_panel.anchor_top = 1.0
 	_action_panel.anchor_bottom = 1.0
 	_action_panel.offset_left = 0
 	_action_panel.offset_right = 0
-	_action_panel.offset_top = (-114 if portrait else -104) * ui_scale
+	_action_panel.offset_top = -114 * ui_scale
 	_action_panel.offset_bottom = -6 * ui_scale
-	var hud_width := (154.0 if portrait else 184.0) * ui_scale
+	var hud_width := 154.0 * ui_scale
 	var hud_height := 86.0 * ui_scale
-	var lower_y := viewport_size.y - (230 if portrait else 124) * ui_scale
+	var lower_y := viewport_size.y - 230 * ui_scale
 	var top_y := 60.0 * ui_scale
 	var positions := [Vector2(pad, top_y), Vector2(viewport_size.x - hud_width - pad, top_y), Vector2(pad, lower_y), Vector2(viewport_size.x - hud_width - pad, lower_y)]
+	_layout_player_cards(positions, Vector2(hud_width, hud_height), Vector2(56, 56) * ui_scale, ui_scale, 16)
+	_style_common_hud(ui_scale, 16, 14, 13, Vector2(34, 32))
+	_resize_hand_cards(ui_scale, Vector2(76, 106))
+	_roll_button.custom_minimum_size = Vector2(84, 84) * ui_scale
+	_roll_button.size = _roll_button.custom_minimum_size
+	_roll_button.position = Vector2(viewport_size.x - 98 * ui_scale, viewport_size.y - 342 * ui_scale)
+
+
+func _apply_landscape_layout(viewport_size: Vector2, ui_scale: float) -> void:
+	var pad := 12.0 * ui_scale
+	_top_panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	_top_panel.offset_left = viewport_size.x * 0.285
+	_top_panel.offset_right = -viewport_size.x * 0.285
+	_top_panel.offset_top = 8 * ui_scale
+	_top_panel.offset_bottom = 62 * ui_scale
+	_action_panel.anchor_left = 0.19
+	_action_panel.anchor_right = 0.81
+	_action_panel.anchor_top = 1.0
+	_action_panel.anchor_bottom = 1.0
+	_action_panel.offset_left = 0
+	_action_panel.offset_right = 0
+	_action_panel.offset_top = -174 * ui_scale
+	_action_panel.offset_bottom = -2 * ui_scale
+	var hud_size := Vector2(232, 116) * ui_scale
+	var top_y := 12.0 * ui_scale
+	var lower_y := viewport_size.y - hud_size.y - 12.0 * ui_scale
+	var positions := [
+		Vector2(pad, top_y),
+		Vector2(viewport_size.x - hud_size.x - pad, top_y),
+		Vector2(pad, lower_y),
+		Vector2(viewport_size.x - hud_size.x - pad, lower_y),
+	]
+	_layout_player_cards(positions, hud_size, Vector2(78, 78) * ui_scale, ui_scale, 18)
+	_style_common_hud(ui_scale, 20, 18, 17, Vector2(42, 36))
+	_resize_hand_cards(ui_scale, Vector2(102, 142))
+	_roll_button.custom_minimum_size = Vector2(98, 98) * ui_scale
+	_roll_button.size = _roll_button.custom_minimum_size
+	_roll_button.position = Vector2(viewport_size.x - 116 * ui_scale, lower_y - 112 * ui_scale)
+
+
+func _layout_player_cards(positions: Array, card_size: Vector2, portrait_size: Vector2, ui_scale: float, label_size: int) -> void:
 	var ids := _player_cards.keys()
 	for index in ids.size():
 		var card := _player_cards[ids[index]] as Control
 		card.position = positions[index % 4]
-		card.size = Vector2(hud_width, hud_height)
+		card.size = card_size
 		card.custom_minimum_size = card.size
 		var portrait_node := card.get_node_or_null("Margin/Box/Portrait") as TextureRect
 		if portrait_node != null:
-			portrait_node.custom_minimum_size = Vector2(56, 56) * ui_scale
+			portrait_node.custom_minimum_size = portrait_size
 		for label_node in card.find_children("*", "Label", true, false):
 			var label := label_node as Label
-			label.add_theme_font_size_override("font_size", int((10 if label.name == "CPU" else 16) * ui_scale))
-	order_label.add_theme_font_size_override("font_size", int(16 * ui_scale))
-	_timer_label.add_theme_font_size_override("font_size", int(14 * ui_scale))
-	waiting_label.add_theme_font_size_override("font_size", int(13 * ui_scale))
-	_roll_button.custom_minimum_size = Vector2(84, 84) * ui_scale
-	_roll_button.size = _roll_button.custom_minimum_size
-	_roll_button.position = Vector2(viewport_size.x - 98 * ui_scale, viewport_size.y - (342 if portrait else 210) * ui_scale)
+			label.add_theme_font_size_override("font_size", int((11 if label.name == "CPU" else label_size) * ui_scale))
+
+
+func _style_common_hud(ui_scale: float, round_size: int, timer_size: int, waiting_size: int, history_size: Vector2) -> void:
+	order_label.add_theme_font_size_override("font_size", int(round_size * ui_scale))
+	_timer_label.add_theme_font_size_override("font_size", int(timer_size * ui_scale))
+	waiting_label.add_theme_font_size_override("font_size", int(waiting_size * ui_scale))
 	_cancel_button.custom_minimum_size = Vector2(50, 42) * ui_scale
-	_cancel_button.add_theme_font_size_override("font_size", int(11 * ui_scale))
+	_cancel_button.add_theme_font_size_override("font_size", int(13 * ui_scale))
 	for slot in _history_slots:
-		slot.custom_minimum_size = Vector2(34, 32) * ui_scale
-		(slot.get_node("Value") as Label).add_theme_font_size_override("font_size", int(17 * ui_scale))
+		slot.custom_minimum_size = history_size * ui_scale
+		(slot.get_node("Value") as Label).add_theme_font_size_override("font_size", int(round_size * ui_scale))
+
+
+func _resize_hand_cards(ui_scale: float, base_size: Vector2) -> void:
+	for card_value in _hand_row.get_children():
+		var card := card_value as Button
+		if card == null:
+			continue
+		card.custom_minimum_size = base_size * ui_scale
+		card.pivot_offset = Vector2(base_size.x * 0.5, base_size.y * 0.9) * ui_scale
+		card.add_theme_constant_override("icon_max_width", int(base_size.x * 0.72 * ui_scale))
+		card.add_theme_font_size_override("font_size", int(15 * ui_scale))
+
+
+func _apply_overlay_layout(viewport_size: Vector2, ui_scale: float, portrait: bool) -> void:
+	var pad := 8.0 * ui_scale
 	if _chat_button != null:
-		var rail_y := viewport_size.y * 0.42
-		_chat_button.position = Vector2(viewport_size.x - 56 * ui_scale, rail_y)
-		_emote_button.position = Vector2(viewport_size.x - 56 * ui_scale, rail_y + 44 * ui_scale)
-		_overview_button.position = Vector2(viewport_size.x - 56 * ui_scale, rail_y + 88 * ui_scale)
-		_settings_button.position = Vector2(viewport_size.x - 56 * ui_scale, rail_y + 132 * ui_scale)
+		var rail_y := viewport_size.y * (0.42 if portrait else 0.31)
+		var rail_step := (44 if portrait else 56) * ui_scale
+		var rail_x := viewport_size.x - (56 if portrait else 66) * ui_scale
+		_chat_button.position = Vector2(rail_x, rail_y)
+		_emote_button.position = Vector2(rail_x, rail_y + rail_step)
+		_overview_button.position = Vector2(rail_x, rail_y + rail_step * 2.0)
+		_settings_button.position = Vector2(rail_x, rail_y + rail_step * 3.0)
 		_chat_badge.position = Vector2(viewport_size.x - 18 * ui_scale, rail_y - 4 * ui_scale)
 		for rail_button in [_chat_button, _emote_button, _overview_button, _settings_button]:
-			rail_button.custom_minimum_size = Vector2(46, 46) * ui_scale
+			rail_button.custom_minimum_size = Vector2(46 if portrait else 54, 46 if portrait else 54) * ui_scale
 	if _chat_panel != null:
 		_chat_panel.position = Vector2(pad, viewport_size.y * 0.57)
 		_chat_panel.size = Vector2(viewport_size.x - pad * 2.0, viewport_size.y * 0.41)
 	if _emote_panel != null:
-		_emote_panel.position = Vector2(viewport_size.x - 196, viewport_size.y * 0.42)
-		_emote_panel.size = Vector2(136, 154)
+		_emote_panel.position = Vector2(viewport_size.x - 196 * ui_scale, viewport_size.y * (0.42 if portrait else 0.31))
+		_emote_panel.size = Vector2(136, 154) * ui_scale
 	if _tile_face_panel != null:
 		_tile_face_panel.position = Vector2(viewport_size.x * 0.5 - 115, viewport_size.y * 0.52)
 		_tile_face_panel.size = Vector2(230, 108)
