@@ -25,5 +25,4 @@ until curl -fsS http://127.0.0.1:8080/health >/dev/null 2>&1; do
 done
 
 cd "$PROJECT_DIR"
-godot --headless --path client --script res://tests/FullOnlineGameE2E.gd
-
+BOARDGAME_SERVER_URL=ws://127.0.0.1:8080/ws godot --headless --path client --script res://tests/FullOnlineGameE2E.gd

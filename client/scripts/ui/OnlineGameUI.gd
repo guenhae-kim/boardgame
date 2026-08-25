@@ -431,6 +431,7 @@ func _rebuild_ticket_row(player_id: String, tickets: Array) -> void:
 	if not _ticket_rows.has(player_id):
 		return
 	var row := _ticket_rows[player_id] as HBoxContainer
+	var ui_scale := _display_scale()
 	for child in row.get_children():
 		child.queue_free()
 	for ticket_value in tickets:
@@ -439,8 +440,8 @@ func _rebuild_ticket_row(player_id: String, tickets: Array) -> void:
 		var badge := Label.new()
 		badge.text = "%d" % int(ticket.get("value", 0))
 		badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		badge.custom_minimum_size = Vector2(24, 18)
-		badge.add_theme_font_size_override("font_size", 10)
+		badge.custom_minimum_size = Vector2(24, 18) * ui_scale
+		badge.add_theme_font_size_override("font_size", int(10 * ui_scale))
 		badge.add_theme_stylebox_override("normal", _panel_style(CAMEL_UI_COLORS.get(camel, Color.GRAY), 1.0, Color.WHITE, 1, 5))
 		row.add_child(badge)
 
@@ -601,8 +602,13 @@ func _rules_view(state: CamelGameState) -> CamelGameRules:
 
 
 func _display_scale() -> float:
-	var physical_width := maxi(1, get_window().size.x)
-	return clampf(get_viewport().get_visible_rect().size.x / float(physical_width), 1.0, 2.5)
+	var viewport_size := get_viewport().get_visible_rect().size
+	# Size from a readable mobile design baseline. Comparing the logical canvas
+	# to the physical window returned 1.0 in the editor's 1080x1920 test window,
+	# leaving 12px labels nearly unreadable.
+	if viewport_size.y > viewport_size.x:
+		return clampf(viewport_size.x / 480.0, 1.0, 2.25)
+	return clampf(viewport_size.y / 720.0, 0.9, 1.4)
 
 
 func _apply_responsive_layout() -> void:
