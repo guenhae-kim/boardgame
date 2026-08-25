@@ -309,8 +309,19 @@ func _build_board() -> void:
 	center_mesh.size = Vector3(17.8, 0.22, 12.3)
 	center.mesh = center_mesh
 	center.position.y = -0.18
-	center.material_override = _material(Color("dfbd78"))
+	center.material_override = _material(Color("f0d18c"))
 	add_child(center)
+	var race_lane := MeshInstance3D.new()
+	var lane_mesh := TorusMesh.new()
+	lane_mesh.inner_radius = 5.75
+	lane_mesh.outer_radius = 7.55
+	lane_mesh.rings = 64
+	lane_mesh.ring_segments = 8
+	race_lane.mesh = lane_mesh
+	race_lane.scale = Vector3(1.0, 0.22, 0.68)
+	race_lane.position.y = -0.08
+	race_lane.material_override = _material(Color("bd8357"))
+	add_child(race_lane)
 	# The former pyramid/glass enclosure is replaced by an open, low Dice Plaza.
 	var plaza := MeshInstance3D.new()
 	plaza.name = "DicePlaza"
@@ -325,18 +336,23 @@ func _build_board() -> void:
 	add_child(plaza)
 	for space in range(1, CamelGameState.TRACK_LENGTH + 1):
 		var node := MeshInstance3D.new()
-		var mesh := BoxMesh.new()
-		mesh.size = Vector3(1.25, 0.18, 1.25)
+		var mesh := CylinderMesh.new()
+		mesh.top_radius = 0.59
+		mesh.bottom_radius = 0.63
+		mesh.height = 0.2
+		mesh.radial_segments = 16
 		node.mesh = mesh
 		node.position = track_point(space)
-		node.material_override = _material(Color("eee0bd") if space % 2 == 0 else Color("d9c28d"))
+		node.material_override = _material(Color("fff0c8") if space % 2 == 0 else Color("f1c980"))
 		add_child(node)
 		_register_interaction(node, "track", str(space), Vector3(1.25, 0.45, 1.25), Vector3(0, 0.22, 0))
 		var number := Label3D.new()
 		number.text = str(space)
-		number.font_size = 42
-		number.modulate = Color("453720")
-		number.position = track_point(space) + Vector3(0, 0.14, 0)
+		number.font_size = 52
+		number.outline_size = 6
+		number.outline_modulate = Color("fff1ce")
+		number.modulate = Color("6b442b")
+		number.position = track_point(space) + Vector3(0, 0.17, 0)
 		number.rotation_degrees.x = -90
 		add_child(number)
 	_build_bet_stack_anchors()

@@ -1,7 +1,9 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://scripts/environment/CarNPC.gd" id="1"]
 [ext_resource type="PackedScene" path="res://assets/third_party/kenney/toy_cars/vehicle-racer.glb" id="2"]
+[ext_resource type="Script" path="res://scripts/environment/KenneyMaterialFix.gd" id="3"]
+[ext_resource type="Texture2D" path="res://assets/third_party/kenney/toy_cars/Textures/colormap.png" id="4"]
 
 [node name="CarNPC" type="Node3D"]
 script = ExtResource("1")
@@ -9,6 +11,7 @@ script = ExtResource("1")
 [node name="ModelSlot" type="Node3D" parent="."]
 rotation_degrees = Vector3(0, 90, 0)
 scale = Vector3(0.78, 0.78, 0.78)
+script = ExtResource("3")
+color_atlas = ExtResource("4")
 
 [node name="KenneyToyCar" parent="ModelSlot" instance=ExtResource("2")]
-

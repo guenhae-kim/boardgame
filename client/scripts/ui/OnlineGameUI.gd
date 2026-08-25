@@ -9,11 +9,22 @@ signal overview_requested
 
 const CAMEL_NAMES := {"blue": "파랑", "yellow": "노랑", "green": "초록", "red": "빨강", "purple": "보라"}
 const CAMEL_UI_COLORS := {"blue": Color("4f91ff"), "yellow": Color("e8bd3f"), "green": Color("48bd70"), "red": Color("e56861"), "purple": Color("9a72d5")}
+const CAMEL_PORTRAITS := {
+	"red": preload("res://assets/art/portraits/red-corgi.png"),
+	"blue": preload("res://assets/art/portraits/blue-kitten.png"),
+	"green": preload("res://assets/art/portraits/green-rabbit.png"),
+	"yellow": preload("res://assets/art/portraits/yellow-duck.png"),
+	"purple": preload("res://assets/art/portraits/purple-fox.png"),
+}
+const PLAYER_PORTRAIT_ORDER := ["red", "blue", "green", "yellow"]
 const GAME_THEME := preload("res://themes/GameTheme.tres")
 const PLAYER_HUD_SCENE := preload("res://scenes/ui/PlayerHUD.tscn")
 const CARD_VIEW_SCENE := preload("res://scenes/ui/CardView.tscn")
 const DICE_BUTTON_SCENE := preload("res://scenes/ui/DiceButton.tscn")
 const HAND_UI_SCENE := preload("res://scenes/ui/HandUI.tscn")
+const CHAT_ICON := preload("res://assets/ui/chat_icon.svg")
+const EMOTE_ICON := preload("res://assets/ui/emote_icon.svg")
+const HOME_ICON := preload("res://assets/ui/home_icon.svg")
 
 var _hud_layer: Control
 var _history_slots: Array[PanelContainer] = []
@@ -218,7 +229,9 @@ func refresh_state(rules: CamelGameRules) -> void:
 		var name_label := card.get_node("Margin/Box/Info/Header/Name") as Label
 		name_label.text = "%s%s" % ["나 · " if player_id == _local_player_id else "", str(player.get("name", player_id))]
 		(card.get_node("Margin/Box/Info/Header/CPU") as Label).text = "CPU" if bool(player.get("is_cpu", false)) else ""
-		(card.get_node("Margin/Box/Portrait/Initial") as Label).text = str(player.get("name", "P")).left(1).to_upper()
+		var portrait := card.get_node("Margin/Box/Portrait") as TextureRect
+		portrait.texture = CAMEL_PORTRAITS[PLAYER_PORTRAIT_ORDER[index % PLAYER_PORTRAIT_ORDER.size()]]
+		(card.get_node("Margin/Box/Portrait/Initial") as Label).visible = false
 		(_hud_timer_labels[player_id] as Label).visible = current and _turn_deadline_ms > 0
 		card.add_theme_stylebox_override("panel", _panel_style(Color("324950") if current else Color("1d3037"), 0.84, PLAYER_COLORS[index], 3 if current else 1, 18))
 		card.modulate = Color.WHITE if bool(player.get("connected", true)) else Color(0.55, 0.55, 0.55, 0.72)
@@ -312,6 +325,8 @@ func _rebuild_hand() -> void:
 		var card := CARD_VIEW_SCENE.instantiate() as Button
 		card.text = str(CAMEL_NAMES.get(camel, camel))
 		card.tooltip_text = "%s 예측 카드" % CAMEL_NAMES.get(camel, camel)
+		card.icon = CAMEL_PORTRAITS.get(camel, null)
+		card.add_theme_constant_override("icon_max_width", int(70 * ui_scale))
 		card.custom_minimum_size = Vector2(76, 106) * ui_scale
 		card.pivot_offset = Vector2(38, 96) * ui_scale
 		card.add_theme_font_size_override("font_size", int(12 * ui_scale))
@@ -327,6 +342,7 @@ func _rebuild_hand() -> void:
 	_spectator_card.pivot_offset = Vector2(38, 96) * ui_scale
 	_spectator_card.add_theme_font_size_override("font_size", int(12 * ui_scale))
 	_spectator_card.self_modulate = Color("65c6ae")
+	_spectator_card.add_theme_constant_override("icon_max_width", int(54 * ui_scale))
 	_spectator_card.pressed.connect(_select_spectator)
 	_hand_row.add_child(_spectator_card)
 	var cards := _hand_row.get_children()
@@ -444,23 +460,24 @@ func _refresh_history(history: Array) -> void:
 
 
 func _build_right_rail() -> void:
-	_chat_button = _rail_button("CHAT", _toggle_chat)
+	_chat_button = _rail_button(CHAT_ICON, "채팅", _toggle_chat)
 	_root.add_child(_chat_button)
 	_chat_badge = Label.new()
 	_chat_badge.visible = false
 	_chat_badge.modulate = Color("ff7668")
 	_root.add_child(_chat_badge)
-	_emote_button = _rail_button("EMOTE", func(): _emote_panel.visible = not _emote_panel.visible)
+	_emote_button = _rail_button(EMOTE_ICON, "빠른 반응", func(): _emote_panel.visible = not _emote_panel.visible)
 	_root.add_child(_emote_button)
-	_overview_button = _rail_button("HOME", func(): overview_requested.emit())
+	_overview_button = _rail_button(HOME_ICON, "보드 전체 보기", func(): overview_requested.emit())
 	_root.add_child(_overview_button)
 
 
-func _rail_button(title: String, callback: Callable) -> Button:
+func _rail_button(icon_texture: Texture2D, hint: String, callback: Callable) -> Button:
 	var button := Button.new()
-	button.text = title
+	button.icon = icon_texture
+	button.tooltip_text = hint
+	button.expand_icon = true
 	button.custom_minimum_size = Vector2(48, 38)
-	button.add_theme_font_size_override("font_size", 9)
 	button.add_theme_stylebox_override("normal", _button_style(Color("263b43"), 0.92))
 	button.pressed.connect(callback)
 	return button
@@ -634,9 +651,9 @@ func _apply_responsive_layout() -> void:
 	order_label.add_theme_font_size_override("font_size", int(16 * ui_scale))
 	_timer_label.add_theme_font_size_override("font_size", int(14 * ui_scale))
 	waiting_label.add_theme_font_size_override("font_size", int(13 * ui_scale))
-	_roll_button.custom_minimum_size = Vector2(92, 92) * ui_scale
+	_roll_button.custom_minimum_size = Vector2(84, 84) * ui_scale
 	_roll_button.size = _roll_button.custom_minimum_size
-	_roll_button.position = Vector2(viewport_size.x - 106 * ui_scale, viewport_size.y - 224 * ui_scale)
+	_roll_button.position = Vector2(viewport_size.x - 98 * ui_scale, viewport_size.y - (342 if portrait else 210) * ui_scale)
 	_cancel_button.custom_minimum_size = Vector2(50, 42) * ui_scale
 	_cancel_button.add_theme_font_size_override("font_size", int(11 * ui_scale))
 	for slot in _history_slots:
@@ -649,8 +666,7 @@ func _apply_responsive_layout() -> void:
 		_overview_button.position = Vector2(viewport_size.x - 56 * ui_scale, rail_y + 88 * ui_scale)
 		_chat_badge.position = Vector2(viewport_size.x - 18 * ui_scale, rail_y - 4 * ui_scale)
 		for rail_button in [_chat_button, _emote_button, _overview_button]:
-			rail_button.custom_minimum_size = Vector2(48, 38) * ui_scale
-			rail_button.add_theme_font_size_override("font_size", int(9 * ui_scale))
+			rail_button.custom_minimum_size = Vector2(46, 46) * ui_scale
 	if _chat_panel != null:
 		_chat_panel.position = Vector2(pad, viewport_size.y * 0.57)
 		_chat_panel.size = Vector2(viewport_size.x - pad * 2.0, viewport_size.y * 0.41)
