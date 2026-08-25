@@ -21,6 +21,7 @@ const PLAYER_PORTRAITS := ["red", "blue", "green", "yellow"]
 @onready var _player_name: Label = $Center/Panel/Margin/Content/PlayerRow/PlayerText/PlayerName
 @onready var _player_badge: Label = $Center/Panel/Margin/Content/PlayerRow/PlayerText/PlayerBadge
 @onready var _item_title: Label = $Center/Panel/Margin/Content/Stage/StageMargin/StageContent/ItemTitle
+@onready var _breakdown_rows: VBoxContainer = $Center/Panel/Margin/Content/Stage/StageMargin/StageContent/BreakdownRows
 @onready var _card: PanelContainer = $Center/Panel/Margin/Content/Stage/StageMargin/StageContent/Card
 @onready var _card_portrait: TextureRect = $Center/Panel/Margin/Content/Stage/StageMargin/StageContent/Card/CardBox/CardPortrait
 @onready var _card_caption: Label = $Center/Panel/Margin/Content/Stage/StageMargin/StageContent/Card/CardBox/CardCaption
@@ -28,6 +29,7 @@ const PLAYER_PORTRAITS := ["red", "blue", "green", "yellow"]
 @onready var _item_delta: Label = $Center/Panel/Margin/Content/Stage/StageMargin/StageContent/ItemDelta
 @onready var _current_total: Label = $Center/Panel/Margin/Content/Stage/StageMargin/StageContent/CurrentTotal
 @onready var _coin_total: Label = $Center/Panel/Margin/Content/Stage/StageMargin/StageContent/CoinTotal
+@onready var _table_total: Label = $Center/Panel/Margin/Content/Stage/StageMargin/StageContent/TableTotal
 @onready var _summary: RichTextLabel = $Center/Panel/Margin/Content/Stage/StageMargin/StageContent/Summary
 @onready var _progress: Label = $Center/Panel/Margin/Content/Progress
 @onready var _skip_button: Button = $Center/Panel/Margin/Content/Skip
@@ -73,24 +75,119 @@ func _play_player(player_index: int, player_count: int, data: Dictionary) -> voi
 	_player_name.text = str(data.get("player_name", data.get("player_id", "Player")))
 	_player_badge.text = "PLAYER %d  ·  이번 라운드" % (player_index + 1)
 	_portrait.texture = PORTRAITS[PLAYER_PORTRAITS[player_index % PLAYER_PORTRAITS.size()]]
+	await _show_player_table(data)
+
+
+func _show_player_table(data: Dictionary) -> void:
 	_summary.visible = false
 	_card.visible = false
 	_dice_icon.visible = false
+	_item_delta.visible = false
+	_current_total.visible = false
+	_coin_total.visible = false
 	_item_title.visible = true
-	_item_delta.visible = true
-	_current_total.visible = true
-	_coin_total.visible = true
-	var running_before := 0
-	var money_cursor := int(data.get("money_before", 0))
-	var cards := data.get("betting_cards", []) as Array
-	for card_data_value in cards:
-		var card_data := card_data_value as Dictionary
-		await _show_card(card_data, running_before, money_cursor)
-		running_before = int(card_data.get("running_total", running_before))
-		money_cursor = int(card_data.get("money_after", money_cursor))
+	_item_title.text = "이번 라운드 정산 내역"
+	_breakdown_rows.visible = true
+	_table_total.visible = true
+	_clear_breakdown_rows()
 
-	await _show_dice(data, running_before, money_cursor)
-	await _show_player_total(data)
+	var cards := data.get("betting_cards", []) as Array
+	if cards.is_empty():
+		_add_breakdown_row(null, "구간 베팅 카드 없음", "", 0, true)
+	else:
+		for card_value in cards:
+			var card_data := card_value as Dictionary
+			var color_id := str(card_data.get("color", "red"))
+			_add_breakdown_row(
+				PORTRAITS.get(color_id, PORTRAITS["red"]),
+				"%s 구간 베팅" % CAMEL_NAMES.get(color_id, color_id),
+				"카드 %d" % int(card_data.get("printed_value", 0)),
+				int(card_data.get("value", 0)),
+				false,
+				CAMEL_COLORS.get(color_id, Color("d88b63")),
+			)
+
+	_add_breakdown_row(
+		load("res://assets/ui/dice_icon.svg") as Texture2D,
+		"주사위 굴리기",
+		"× %d회" % int(data.get("dice_roll_count", 0)),
+		int(data.get("dice_reward", 0)),
+		false,
+		Color("d8a33d"),
+	)
+
+	_table_total.text = "카드 %s   +   주사위 %s\n이번 라운드 총합  %s 코인\n보유 코인  %d → %d" % [
+		_signed(int(data.get("card_delta", 0))),
+		_signed(int(data.get("dice_reward", 0))),
+		_signed(int(data.get("round_delta", 0))),
+		int(data.get("money_before", 0)),
+		int(data.get("money_after", 0)),
+	]
+	_table_total.modulate.a = 0.0
+	await get_tree().process_frame
+	for row_value in _breakdown_rows.get_children():
+		var row := row_value as Control
+		row.modulate.a = 0.0
+		_active_tween = create_tween()
+		_active_tween.tween_property(row, "modulate:a", 1.0, 0.16 if not _skip else 0.02)
+		await _active_tween.finished
+		await _wait_or_skip(0.12)
+	_active_tween = create_tween()
+	_active_tween.tween_property(_table_total, "modulate:a", 1.0, 0.24 if not _skip else 0.03)
+	await _active_tween.finished
+	# Keep one player's complete calculation visible long enough to read. The
+	# fast-forward button only shortens presentation; it never changes data.
+	await _wait_or_skip(2.25)
+
+
+func _add_breakdown_row(icon: Texture2D, title: String, detail: String, value: int, muted: bool, accent: Color = Color("d0a45b")) -> void:
+	var row := PanelContainer.new()
+	row.custom_minimum_size.y = 54.0 * _ui_scale
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(accent, 0.11) if not muted else Color(0.5, 0.45, 0.38, 0.07)
+	style.border_color = Color(accent, 0.58) if not muted else Color(0.5, 0.45, 0.38, 0.24)
+	style.set_border_width_all(maxi(1, roundi(1.5 * _ui_scale)))
+	style.set_corner_radius_all(roundi(12.0 * _ui_scale))
+	row.add_theme_stylebox_override("panel", style)
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", roundi(9.0 * _ui_scale))
+	margin.add_theme_constant_override("margin_right", roundi(11.0 * _ui_scale))
+	margin.add_theme_constant_override("margin_top", roundi(5.0 * _ui_scale))
+	margin.add_theme_constant_override("margin_bottom", roundi(5.0 * _ui_scale))
+	row.add_child(margin)
+	var line := HBoxContainer.new()
+	line.add_theme_constant_override("separation", roundi(7.0 * _ui_scale))
+	margin.add_child(line)
+	var icon_view := TextureRect.new()
+	icon_view.custom_minimum_size = Vector2(42, 42) * _ui_scale
+	icon_view.texture = icon
+	icon_view.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon_view.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	line.add_child(icon_view)
+	var title_label := Label.new()
+	title_label.text = title
+	title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_label.add_theme_color_override("font_color", Color("493528") if not muted else Color("8b8177"))
+	title_label.add_theme_font_size_override("font_size", _scaled_font(16))
+	line.add_child(title_label)
+	var detail_label := Label.new()
+	detail_label.text = detail
+	detail_label.add_theme_color_override("font_color", Color("80664d"))
+	detail_label.add_theme_font_size_override("font_size", _scaled_font(13))
+	line.add_child(detail_label)
+	var value_label := Label.new()
+	value_label.text = _signed(value)
+	value_label.custom_minimum_size.x = 48.0 * _ui_scale
+	value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	value_label.add_theme_color_override("font_color", Color("278c46") if value >= 0 else Color("c84f4f"))
+	value_label.add_theme_font_size_override("font_size", _scaled_font(20))
+	line.add_child(value_label)
+	_breakdown_rows.add_child(row)
+
+
+func _clear_breakdown_rows() -> void:
+	for child in _breakdown_rows.get_children():
+		child.free()
 
 
 func _show_card(data: Dictionary, previous_total: int, previous_money: int) -> void:
@@ -161,6 +258,8 @@ func _show_round_summary(breakdowns: Array) -> void:
 	_item_delta.visible = false
 	_current_total.visible = false
 	_coin_total.visible = false
+	_breakdown_rows.visible = false
+	_table_total.visible = false
 	_summary.visible = true
 	_progress.text = ""
 	var lines: Array[String] = ["[center][font_size=%d][b]전체 결과[/b][/font_size]\n" % _scaled_font(23)]
@@ -241,8 +340,8 @@ func _apply_responsive_size() -> void:
 	_panel.custom_minimum_size.y = minf(650.0 * responsive_scale, viewport_size.y - 112.0)
 	_panel.scale = Vector2.ONE
 	_round_title.add_theme_font_size_override("font_size", _scaled_font(25))
-	_portrait.custom_minimum_size = Vector2(66, 66) * responsive_scale
-	_player_name.add_theme_font_size_override("font_size", _scaled_font(22))
+	_portrait.custom_minimum_size = Vector2(82, 82) * responsive_scale
+	_player_name.add_theme_font_size_override("font_size", _scaled_font(26))
 	_player_badge.add_theme_font_size_override("font_size", _scaled_font(13))
 	_item_title.add_theme_font_size_override("font_size", _scaled_font(17))
 	_card.custom_minimum_size = Vector2(178, 196) * responsive_scale
@@ -252,6 +351,7 @@ func _apply_responsive_size() -> void:
 	_item_delta.add_theme_font_size_override("font_size", _scaled_font(37))
 	_current_total.add_theme_font_size_override("font_size", _scaled_font(18))
 	_coin_total.add_theme_font_size_override("font_size", _scaled_font(16))
+	_table_total.add_theme_font_size_override("font_size", _scaled_font(20))
 	_summary.add_theme_font_size_override("normal_font_size", _scaled_font(18))
 	_progress.add_theme_font_size_override("font_size", _scaled_font(13))
 	_skip_button.custom_minimum_size.y = 48.0 * responsive_scale

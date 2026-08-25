@@ -140,6 +140,13 @@ theme_override_font_sizes/font_size = 17
 text = "구간 베팅 카드"
 horizontal_alignment = 1
 
+[node name="BreakdownRows" type="VBoxContainer" parent="Center/Panel/Margin/Content/Stage/StageMargin/StageContent"]
+visible = false
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/separation = 6
+
 [node name="Card" type="PanelContainer" parent="Center/Panel/Margin/Content/Stage/StageMargin/StageContent"]
 custom_minimum_size = Vector2(178, 196)
 layout_mode = 2
@@ -192,6 +199,14 @@ theme_override_font_sizes/font_size = 16
 text = "보유 코인 3 → 8"
 horizontal_alignment = 1
 
+[node name="TableTotal" type="Label" parent="Center/Panel/Margin/Content/Stage/StageMargin/StageContent"]
+visible = false
+layout_mode = 2
+theme_override_colors/font_color = Color(0.28, 0.19, 0.11, 1)
+theme_override_font_sizes/font_size = 20
+text = "이번 라운드 총합  +9 코인"
+horizontal_alignment = 1
+
 [node name="Summary" type="RichTextLabel" parent="Center/Panel/Margin/Content/Stage/StageMargin/StageContent"]
 visible = false
 custom_minimum_size = Vector2(270, 235)
@@ -214,4 +229,3 @@ custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 theme_override_font_sizes/font_size = 16
 text = "빠르게 보기"
-

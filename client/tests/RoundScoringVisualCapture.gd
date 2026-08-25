@@ -31,7 +31,7 @@ func _capture() -> void:
 			"dice_reward": 1, "dice_running_total": 1, "round_delta": 1, "money_after": 9,
 		},
 	])
-	await create_timer(0.72).timeout
+	await create_timer(1.65).timeout
 	var image := root.get_viewport().get_texture().get_image()
 	var output := "/tmp/camel_round_scoring_390x844.png"
 	var error := image.save_png(output)
