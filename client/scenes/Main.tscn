@@ -1,12 +1,12 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene format=3 uid="uid://dyymab507rbho"]
 
-[ext_resource type="Script" path="res://scripts/Main.gd" id="1"]
+[ext_resource type="Script" uid="uid://l1aghl4w1sos" path="res://scripts/Main.gd" id="1"]
 [ext_resource type="PackedScene" path="res://scenes/Lobby.tscn" id="2"]
 [ext_resource type="PackedScene" path="res://scenes/OnlineGame.tscn" id="3"]
 
-[node name="Main" type="Node"]
+[node name="Main" type="Node" unique_id=1540274820]
 script = ExtResource("1")
 
-[node name="Game" parent="." instance=ExtResource("3")]
+[node name="Game" parent="." unique_id=310229391 instance=ExtResource("3")]
 
-[node name="Lobby" parent="." instance=ExtResource("2")]
+[node name="Lobby" parent="." unique_id=2135178191 instance=ExtResource("2")]

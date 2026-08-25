@@ -1,0 +1,165 @@
+[gd_scene load_steps=13 format=3]
+
+[ext_resource type="Texture2D" path="res://assets/art/portraits/red-corgi.png" id="1"]
+[ext_resource type="Texture2D" path="res://assets/art/portraits/blue-kitten.png" id="2"]
+[ext_resource type="Texture2D" path="res://assets/art/portraits/green-rabbit.png" id="3"]
+[ext_resource type="Texture2D" path="res://assets/art/portraits/purple-fox.png" id="4"]
+[ext_resource type="Texture2D" path="res://assets/ui/paw_icon.svg" id="5"]
+[ext_resource type="Theme" path="res://themes/GameTheme.tres" id="6"]
+[ext_resource type="FontFile" path="res://assets/fonts/NotoSansKR-Variable.ttf" id="7"]
+
+[sub_resource type="FontVariation" id="LogoFont"]
+base_font = ExtResource("7")
+variation_embolden = 1.15
+
+[sub_resource type="StyleBoxFlat" id="LogoShadow"]
+bg_color = Color(0.24, 0.13, 0.06, 0.64)
+corner_radius_top_left = 52
+corner_radius_top_right = 52
+corner_radius_bottom_right = 52
+corner_radius_bottom_left = 52
+
+[sub_resource type="StyleBoxFlat" id="LogoSign"]
+bg_color = Color(1, 0.94, 0.76, 1)
+border_width_left = 7
+border_width_top = 7
+border_width_right = 7
+border_width_bottom = 7
+border_color = Color(0.62, 0.34, 0.12, 1)
+corner_radius_top_left = 48
+corner_radius_top_right = 48
+corner_radius_bottom_right = 48
+corner_radius_bottom_left = 48
+shadow_color = Color(0.12, 0.07, 0.03, 0.44)
+shadow_size = 18
+
+[sub_resource type="StyleBoxFlat" id="Ribbon"]
+bg_color = Color(0.67, 0.34, 0.12, 0.98)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.88, 0.6, 0.25, 1)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+shadow_color = Color(0.1, 0.05, 0.02, 0.3)
+shadow_size = 7
+
+[node name="GameLogo" type="Control"]
+custom_minimum_size = Vector2(920, 600)
+layout_mode = 3
+anchors_preset = 0
+theme = ExtResource("6")
+
+[node name="Heroes" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 310.0
+grow_horizontal = 2
+mouse_filter = 2
+
+[node name="Red" type="TextureRect" parent="Heroes"]
+layout_mode = 0
+offset_left = 80.0
+offset_top = 30.0
+offset_right = 330.0
+offset_bottom = 280.0
+mouse_filter = 2
+texture = ExtResource("1")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Blue" type="TextureRect" parent="Heroes"]
+layout_mode = 0
+offset_left = 250.0
+offset_top = 0.0
+offset_right = 500.0
+offset_bottom = 250.0
+mouse_filter = 2
+texture = ExtResource("2")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Green" type="TextureRect" parent="Heroes"]
+layout_mode = 0
+offset_left = 430.0
+offset_top = 8.0
+offset_right = 680.0
+offset_bottom = 258.0
+mouse_filter = 2
+texture = ExtResource("3")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Purple" type="TextureRect" parent="Heroes"]
+layout_mode = 0
+offset_left = 600.0
+offset_top = 34.0
+offset_right = 850.0
+offset_bottom = 284.0
+mouse_filter = 2
+texture = ExtResource("4")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Shadow" type="Panel" parent="."]
+layout_mode = 0
+offset_left = 80.0
+offset_top = 238.0
+offset_right = 840.0
+offset_bottom = 502.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("LogoShadow")
+
+[node name="Sign" type="PanelContainer" parent="."]
+layout_mode = 0
+offset_left = 64.0
+offset_top = 218.0
+offset_right = 856.0
+offset_bottom = 474.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("LogoSign")
+
+[node name="Title" type="Label" parent="Sign"]
+layout_mode = 2
+theme_override_fonts/font = SubResource("LogoFont")
+theme_override_colors/font_color = Color(0.29, 0.15, 0.065, 1)
+theme_override_colors/font_shadow_color = Color(1, 0.91, 0.68, 0.8)
+theme_override_constants/shadow_offset_x = 3
+theme_override_constants/shadow_offset_y = 4
+theme_override_font_sizes/font_size = 73
+text = "동물들의\n테이블 경주"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Paw" type="TextureRect" parent="."]
+layout_mode = 0
+offset_left = 789.0
+offset_top = 376.0
+offset_right = 849.0
+offset_bottom = 436.0
+mouse_filter = 2
+texture = ExtResource("5")
+modulate = Color(0.42, 0.22, 0.09, 1)
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Ribbon" type="PanelContainer" parent="."]
+layout_mode = 0
+offset_left = 217.0
+offset_top = 448.0
+offset_right = 703.0
+offset_bottom = 524.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("Ribbon")
+
+[node name="Subtitle" type="Label" parent="Ribbon"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.91, 0.7, 1)
+theme_override_font_sizes/font_size = 25
+text = "귀여운 동물들과 함께하는 보드게임"
+horizontal_alignment = 1
+vertical_alignment = 1

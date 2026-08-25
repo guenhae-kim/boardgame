@@ -1,4 +1,12 @@
 id,role,type,description,size/ratio,style line ref,source
+menu_city_background,Main menu and room lobby visual identity,Raster PNG,"Polished connected miniature streets storefronts lamps trees cars and fountain with calm overlay zones",9:16 full bleed,STYLE_FORMULA_V2,generate
+menu_city_world,Reusable live 3D city environment for gameplay transitions,Godot TSCN,"Editor-authored Kenney miniature streets storefronts lamps trees and path cars with a portrait-first camera",390x844 full bleed,STYLE_FORMULA_V2,reference_media[1]
+game_logo,Main menu identity and title hierarchy,Godot Control,"Layered cream toy-sign logo with warm brown title paw emblem and ribbon subtitle",340x190 mobile,STYLE_FORMULA_V2,reference_media[1]
+main_menu_card,Nickname and create/join primary actions,Godot Control,"Compact lower floating cream card with one input two large tactile actions and hidden join sheet",350x300 mobile,STYLE_FORMULA_V2,reference_media[1]
+join_room_sheet,Four-character room-code entry,Godot Control,"Bottom sheet with large spaced room code primary join and quiet cancel action",390x330 mobile,STYLE_FORMULA_V2,reference_media[1]
+room_lobby,Room code and four-player waiting composition,Godot Control,"Portrait-first cream lobby card over the living city with 2x2 player cards CPU toggle and host action",370x690 mobile,STYLE_FORMULA_V2,reference_media[1]
+player_lobby_card,Occupied empty host and CPU slot states,Godot Control,"Reusable portrait card with numbered accent host CPU connection status and short pop entrance",2x2 grid,STYLE_FORMULA_V2,reference_media[1]
+toast,Player-safe connection copy and room errors,Godot Control,"Compact warm dark rounded toast with short Korean player-facing copy",320x56 mobile,STYLE_FORMULA_V2,reference_media[1]
 board_tabletop,Primary gameplay surface and clockwise race track,Godot TSCN,"Editor-placeable cream toy-board with readable color components",portrait 70-85% viewport,STYLE_FORMULA_V2,reference_media[0]
 player_hud,Four edge-anchored public player summaries,Godot Control,"Portrait-led compact HUD with nickname coin timer CPU badge and ticket mini-cards",4 responsive corners,STYLE_FORMULA_V2,https://kenney.nl/assets/ui-pack
 private_hand,Local-only usable prediction and spectator cards,Godot Control,"Bottom-center tactile card fan with character-color cards only",5-6 cards,STYLE_FORMULA_V2,https://kenney.nl/assets/ui-pack

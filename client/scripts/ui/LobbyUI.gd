@@ -3,97 +3,99 @@ extends Control
 
 signal room_entered(payload: Dictionary)
 
-@onready var nickname_input: LineEdit = $Center/Panel/Content/Nickname
-@onready var room_code_input: LineEdit = $Center/Panel/Content/RoomCode
-@onready var create_button: Button = $Center/Panel/Content/CreateButton
-@onready var join_button: Button = $Center/Panel/Content/JoinButton
-@onready var status_label: Label = $Center/Panel/Content/Status
-@onready var error_label: Label = $Center/Panel/Content/Error
+@onready var nickname_input: LineEdit = $MenuCard/Margin/Content/Nickname
+@onready var create_button: Button = $MenuCard/Margin/Content/CreateButton
+@onready var join_button: Button = $MenuCard/Margin/Content/JoinButton
+@onready var status_label: Label = $MenuCard/Margin/Content/Status
+@onready var join_sheet: CamelJoinRoomSheet = $JoinRoomSheet
+@onready var toast: CamelToast = $Toast
+var _network: Node
+
 
 func _ready() -> void:
-	$Center/Panel/Content/Title.text = "동물들의 테이블 경주"
-	_apply_home_style()
+	_network = get_node("/root/NetworkClient")
 	create_button.pressed.connect(_on_create_pressed)
 	join_button.pressed.connect(_on_join_pressed)
-	room_code_input.text_submitted.connect(func(_value: String) -> void: _on_join_pressed())
-	NetworkClient.connection_status_changed.connect(_on_connection_status_changed)
-	NetworkClient.room_created.connect(_on_room_entered)
-	NetworkClient.room_joined.connect(_on_room_entered)
-	NetworkClient.server_error.connect(_on_server_error)
+	join_sheet.join_requested.connect(_on_join_code_submitted)
+	nickname_input.text_submitted.connect(func(_value: String): _on_create_pressed())
+	_network.connection_status_changed.connect(_on_connection_status_changed)
+	_network.room_created.connect(_on_room_entered)
+	_network.room_joined.connect(_on_room_entered)
+	_network.server_error.connect(_on_server_error)
+	$TopBar/SoundButton.pressed.connect(func(): toast.show_message("사운드 설정은 준비 중이에요"))
 	_on_connection_status_changed("Connecting")
-	get_viewport().size_changed.connect(_apply_home_style)
+	modulate.a = 0.0
+	create_tween().tween_property(self, "modulate:a", 1.0, 0.35)
 
-func _apply_home_style() -> void:
-	var physical_width := maxi(1, get_window().size.x)
-	var ui_scale := maxf(1.0, get_viewport().get_visible_rect().size.x / float(physical_width))
-	var panel_style := StyleBoxFlat.new()
-	panel_style.bg_color = Color("fff4d8")
-	panel_style.border_color = Color("e7b85f")
-	panel_style.set_border_width_all(3)
-	panel_style.set_corner_radius_all(int(26 * ui_scale))
-	panel_style.content_margin_left = 28 * ui_scale
-	panel_style.content_margin_right = 28 * ui_scale
-	panel_style.content_margin_top = 26 * ui_scale
-	panel_style.content_margin_bottom = 26 * ui_scale
-	$Center/Panel.add_theme_stylebox_override("panel", panel_style)
-	$Center/Panel.custom_minimum_size.x = 430 * ui_scale
-	$Center/Panel/Content.add_theme_constant_override("separation", int(14 * ui_scale))
-	$Center/Panel/Content/Title.modulate = Color("8f563d")
-	$Center/Panel/Content/Title.add_theme_font_size_override("font_size", int(34 * ui_scale))
-	for button in [create_button, join_button]:
-		var normal := StyleBoxFlat.new(); normal.bg_color = Color("e7a83e") if button == create_button else Color("55a89c"); normal.set_corner_radius_all(int(18 * ui_scale))
-		var hover := normal.duplicate() as StyleBoxFlat; hover.bg_color = normal.bg_color.lightened(0.08)
-		var disabled := normal.duplicate() as StyleBoxFlat; disabled.bg_color = Color("9ca5a3")
-		button.add_theme_stylebox_override("normal", normal)
-		button.add_theme_stylebox_override("hover", hover)
-		button.add_theme_stylebox_override("pressed", hover)
-		button.add_theme_stylebox_override("disabled", disabled)
-		button.custom_minimum_size.y = 58 * ui_scale
-		button.add_theme_font_size_override("font_size", int(20 * ui_scale))
-	for field in [nickname_input, room_code_input]:
-		var field_style := StyleBoxFlat.new(); field_style.bg_color = Color("ffffff"); field_style.border_color = Color("d8b987"); field_style.set_border_width_all(2); field_style.set_corner_radius_all(int(14 * ui_scale)); field_style.content_margin_left = 16 * ui_scale; field_style.content_margin_right = 16 * ui_scale
-		field.add_theme_stylebox_override("normal", field_style)
-		field.custom_minimum_size.y = 52 * ui_scale
-		field.add_theme_font_size_override("font_size", int(19 * ui_scale))
-	for label in [$Center/Panel/Content/NicknameLabel, status_label, error_label]:
-		label.add_theme_font_size_override("font_size", int(16 * ui_scale))
 
 func _on_create_pressed() -> void:
-	error_label.text = ""
 	var nickname := _nickname()
 	if nickname.is_empty():
-		error_label.text = "닉네임을 입력해 주세요."
+		toast.show_message("먼저 닉네임을 입력해 주세요")
 		nickname_input.grab_focus()
 		return
-	NetworkClient.create_room(nickname)
+	_set_actions_enabled(false)
+	status_label.text = "새로운 테이블을 준비하는 중…"
+	_network.create_room(nickname)
+
 
 func _on_join_pressed() -> void:
-	error_label.text = ""
-	var code := room_code_input.text.strip_edges().to_upper()
-	if code.length() != 4:
-		error_label.text = "Room Code는 4글자입니다."
-		return
-	var nickname := _nickname()
-	if nickname.is_empty():
-		error_label.text = "닉네임을 입력해 주세요."
+	if _nickname().is_empty():
+		toast.show_message("먼저 닉네임을 입력해 주세요")
 		nickname_input.grab_focus()
 		return
-	NetworkClient.join_room(code, nickname)
+	join_sheet.show_sheet()
+
+
+func _on_join_code_submitted(code: String) -> void:
+	join_sheet.hide_sheet()
+	_set_actions_enabled(false)
+	status_label.text = "친구의 방을 찾는 중…"
+	_network.join_room(code, _nickname())
+
 
 func _nickname() -> String:
-	var value := nickname_input.text.strip_edges()
-	return value.left(20)
+	return nickname_input.text.strip_edges().left(20)
+
 
 func _on_connection_status_changed(status: String) -> void:
-	status_label.text = "Server: %s" % status
-	var enabled := status == "Connected"
+	match status:
+		"Connected":
+			status_label.text = "● 친구들과 만날 준비 완료"
+			_set_actions_enabled(true)
+		"Connecting":
+			status_label.text = "도시에 연결하는 중…"
+			_set_actions_enabled(false)
+		"Disconnected":
+			status_label.text = "연결을 다시 확인하고 있어요…"
+			_set_actions_enabled(false)
+			toast.show_message("서버와 연결이 잠시 끊어졌어요")
+		_:
+			status_label.text = "연결 상태를 확인하는 중…"
+
+
+func _set_actions_enabled(enabled: bool) -> void:
 	create_button.disabled = not enabled
 	join_button.disabled = not enabled
-	if status == "Disconnected":
-		error_label.text = "서버 연결이 끊어졌습니다. 페이지를 새로고침하세요."
+
 
 func _on_room_entered(payload: Dictionary) -> void:
+	var tween := create_tween()
+	tween.tween_property(self, "modulate:a", 0.0, 0.22)
+	await tween.finished
 	room_entered.emit(payload)
 
+
 func _on_server_error(code: String, message: String) -> void:
-	error_label.text = "%s: %s" % [code, message]
+	_set_actions_enabled(true)
+	status_label.text = "● 친구들과 만날 준비 완료"
+	var friendly := "문제가 생겼어요. 잠시 후 다시 시도해 주세요"
+	match code:
+		"ROOM_NOT_FOUND": friendly = "방을 찾지 못했어요 · 코드를 다시 확인해 주세요"
+		"ROOM_FULL": friendly = "이 방은 이미 친구들로 가득 찼어요"
+		"INVALID_ROOM_CODE": friendly = "방 코드는 영문과 숫자 4자리예요"
+		"GAME_ALREADY_STARTED": friendly = "이미 경주가 시작된 방이에요"
+		"NICKNAME_REQUIRED": friendly = "닉네임을 입력해 주세요"
+		"CONNECTION_FAILED": friendly = "서버에 연결하지 못했어요"
+	push_warning("Lobby server error %s: %s" % [code, message])
+	toast.show_message(friendly, 3.0)

@@ -1,6 +1,62 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=11 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/LobbyUI.gd" id="1"]
+[ext_resource type="PackedScene" path="res://scenes/ui/MenuBackdrop.tscn" id="2"]
+[ext_resource type="PackedScene" path="res://scenes/ui/GameLogo.tscn" id="3"]
+[ext_resource type="PackedScene" path="res://scenes/ui/JoinRoomSheet.tscn" id="4"]
+[ext_resource type="PackedScene" path="res://scenes/ui/Toast.tscn" id="5"]
+[ext_resource type="Theme" path="res://themes/GameTheme.tres" id="6"]
+[ext_resource type="Texture2D" path="res://assets/ui/home_icon.svg" id="7"]
+
+[sub_resource type="StyleBoxFlat" id="MenuCard"]
+content_margin_left = 38.0
+content_margin_top = 34.0
+content_margin_right = 38.0
+content_margin_bottom = 34.0
+bg_color = Color(1, 0.955, 0.84, 0.985)
+border_width_left = 4
+border_width_top = 4
+border_width_right = 4
+border_width_bottom = 4
+border_color = Color(0.76, 0.49, 0.18, 1)
+corner_radius_top_left = 38
+corner_radius_top_right = 38
+corner_radius_bottom_right = 38
+corner_radius_bottom_left = 38
+shadow_color = Color(0.08, 0.05, 0.025, 0.48)
+shadow_size = 18
+
+[sub_resource type="StyleBoxFlat" id="JoinButton"]
+content_margin_left = 18.0
+content_margin_top = 15.0
+content_margin_right = 18.0
+content_margin_bottom = 15.0
+bg_color = Color(0.22, 0.52, 0.48, 1)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.48, 0.76, 0.68, 1)
+corner_radius_top_left = 22
+corner_radius_top_right = 22
+corner_radius_bottom_right = 22
+corner_radius_bottom_left = 22
+shadow_color = Color(0.04, 0.12, 0.1, 0.5)
+shadow_size = 9
+
+[sub_resource type="StyleBoxFlat" id="TopIcon"]
+bg_color = Color(1, 0.95, 0.82, 0.94)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.72, 0.52, 0.28, 0.85)
+corner_radius_top_left = 20
+corner_radius_top_right = 20
+corner_radius_bottom_right = 20
+corner_radius_bottom_left = 20
+shadow_color = Color(0, 0, 0, 0.3)
+shadow_size = 8
 
 [node name="Lobby" type="Control"]
 layout_mode = 3
@@ -9,79 +65,145 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+theme = ExtResource("6")
 script = ExtResource("1")
 
-[node name="Background" type="ColorRect" parent="."]
+[node name="Backdrop" parent="." instance=ExtResource("2")]
+layout_mode = 1
+
+[node name="WarmOverlay" type="ColorRect" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0.055, 0.078, 0.125, 1)
+mouse_filter = 2
+color = Color(0.16, 0.11, 0.06, 0.12)
 
-[node name="Center" type="CenterContainer" parent="."]
+[node name="TopBar" type="HBoxContainer" parent="."]
 layout_mode = 1
-anchors_preset = 15
+anchors_preset = 10
 anchor_right = 1.0
-anchor_bottom = 1.0
+offset_left = 44.0
+offset_top = 42.0
+offset_right = -44.0
+offset_bottom = 122.0
 grow_horizontal = 2
-grow_vertical = 2
+alignment = 2
 
-[node name="Panel" type="PanelContainer" parent="Center"]
-custom_minimum_size = Vector2(430, 0)
+[node name="SoundButton" type="Button" parent="TopBar"]
+custom_minimum_size = Vector2(80, 80)
 layout_mode = 2
+theme_override_colors/font_color = Color(0.3, 0.2, 0.12, 1)
+theme_override_font_sizes/font_size = 36
+theme_override_styles/normal = SubResource("TopIcon")
+theme_override_styles/hover = SubResource("TopIcon")
+theme_override_styles/pressed = SubResource("TopIcon")
+text = "♪"
 
-[node name="Content" type="VBoxContainer" parent="Center/Panel"]
-layout_mode = 2
-theme_override_constants/separation = 14
+[node name="Logo" parent="." instance=ExtResource("3")]
+layout_mode = 1
+anchors_preset = 10
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -460.0
+offset_top = 76.0
+offset_right = 460.0
+offset_bottom = 676.0
+grow_horizontal = 2
 
-[node name="Title" type="Label" parent="Center/Panel/Content"]
-layout_mode = 2
-theme_override_font_sizes/font_size = 30
-text = "3D ONLINE ROOM"
-horizontal_alignment = 1
+[node name="MenuCard" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -455.0
+offset_top = -690.0
+offset_right = 455.0
+offset_bottom = -82.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_styles/panel = SubResource("MenuCard")
 
-[node name="NicknameLabel" type="Label" parent="Center/Panel/Content"]
+[node name="Margin" type="MarginContainer" parent="MenuCard"]
 layout_mode = 2
-text = "닉네임"
+theme_override_constants/margin_left = 44
+theme_override_constants/margin_top = 24
+theme_override_constants/margin_right = 44
+theme_override_constants/margin_bottom = 24
 
-[node name="Nickname" type="LineEdit" parent="Center/Panel/Content"]
-custom_minimum_size = Vector2(0, 52)
+[node name="Content" type="VBoxContainer" parent="MenuCard/Margin"]
 layout_mode = 2
-placeholder_text = "닉네임을 입력하세요 (필수)"
+theme_override_constants/separation = 17
+
+[node name="NicknameLabel" type="Label" parent="MenuCard/Margin/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.34, 0.22, 0.12, 1)
+theme_override_font_sizes/font_size = 36
+text = "발바닥 이름표"
+
+[node name="Nickname" type="LineEdit" parent="MenuCard/Margin/Content"]
+custom_minimum_size = Vector2(0, 88)
+layout_mode = 2
+theme_override_font_sizes/font_size = 38
+placeholder_text = "닉네임을 입력해 주세요"
 max_length = 20
 
-[node name="CreateButton" type="Button" parent="Center/Panel/Content"]
-custom_minimum_size = Vector2(0, 58)
+[node name="CreateButton" type="Button" parent="MenuCard/Margin/Content"]
+custom_minimum_size = Vector2(0, 104)
 layout_mode = 2
+theme_override_font_sizes/font_size = 44
+icon = ExtResource("7")
+icon_max_width = 46
 text = "방 만들기"
 disabled = true
 
-[node name="Separator" type="HSeparator" parent="Center/Panel/Content"]
+[node name="Divider" type="HBoxContainer" parent="MenuCard/Margin/Content"]
+custom_minimum_size = Vector2(0, 38)
 layout_mode = 2
-
-[node name="RoomCode" type="LineEdit" parent="Center/Panel/Content"]
-custom_minimum_size = Vector2(0, 52)
-layout_mode = 2
-placeholder_text = "Room Code (예: K7DF)"
-max_length = 4
+theme_override_constants/separation = 18
 alignment = 1
 
-[node name="JoinButton" type="Button" parent="Center/Panel/Content"]
-custom_minimum_size = Vector2(0, 58)
+[node name="Left" type="HSeparator" parent="MenuCard/Margin/Content/Divider"]
+custom_minimum_size = Vector2(250, 0)
 layout_mode = 2
-text = "방 참가"
+size_flags_horizontal = 3
+
+[node name="Text" type="Label" parent="MenuCard/Margin/Content/Divider"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.44, 0.36, 0.28, 0.78)
+theme_override_font_sizes/font_size = 25
+text = "또는"
+
+[node name="Right" type="HSeparator" parent="MenuCard/Margin/Content/Divider"]
+custom_minimum_size = Vector2(250, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="JoinButton" type="Button" parent="MenuCard/Margin/Content"]
+custom_minimum_size = Vector2(0, 104)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.96, 0.84, 1)
+theme_override_colors/font_disabled_color = Color(0.83, 0.86, 0.82, 0.8)
+theme_override_font_sizes/font_size = 44
+theme_override_styles/normal = SubResource("JoinButton")
+theme_override_styles/hover = SubResource("JoinButton")
+theme_override_styles/pressed = SubResource("JoinButton")
+text = "친구 방 참가"
 disabled = true
 
-[node name="Status" type="Label" parent="Center/Panel/Content"]
+[node name="Status" type="Label" parent="MenuCard/Margin/Content"]
 layout_mode = 2
-text = "Server: Connecting"
+theme_override_colors/font_color = Color(0.31, 0.43, 0.36, 1)
+theme_override_font_sizes/font_size = 25
+text = "도시에 연결하는 중…"
 horizontal_alignment = 1
 
-[node name="Error" type="Label" parent="Center/Panel/Content"]
-layout_mode = 2
-theme_override_colors/font_color = Color(1, 0.45, 0.45, 1)
-text = ""
-horizontal_alignment = 1
-autowrap_mode = 2
+[node name="JoinRoomSheet" parent="." instance=ExtResource("4")]
+layout_mode = 1
+
+[node name="Toast" parent="." instance=ExtResource("5")]
+layout_mode = 1

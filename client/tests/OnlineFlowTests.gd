@@ -43,6 +43,7 @@ func _run() -> void:
 	_check(online.online_ui._hand_row.get_child_count() == 6, "hand contains prediction cards plus the spectator tool, never acquired betting tickets")
 	_check((online.online_ui._ticket_rows["player_1"] as HBoxContainer).get_child_count() == 1, "acquired betting ticket appears beside its owner HUD")
 	_check((online.online_ui._history_slots[0].get_node("Value") as Label).text == "3" and (online.online_ui._history_slots[1].get_node("Value") as Label).text == "1", "dice history uses clear face values without cramped color text")
+	_check(not online.dice.gesture_enabled, "online dice cannot be triggered by the hidden pyramid gesture")
 	online.online_ui.receive_chat("Friend", "red please three", "player_2")
 	_check(online.online_ui._hud_chat_bubbles.has("player_2"), "room chat appears as a visible speech bubble beside its sender HUD")
 	var top_bet_card := (online.board._bet_card_nodes["red"] as Array)[-1] as Node3D
@@ -50,10 +51,14 @@ func _run() -> void:
 	_check(is_zero_approx(top_bet_label.rotation.x + PI * 0.5), "betting value is printed flat on the physical card surface")
 	_check(not online.online_ui._roll_button.disabled, "only current local player action controls are enabled")
 	_check(online.board._enabled_targets.has("bet:red"), "legal board betting stacks are directly tappable on my turn")
-	online.online_ui._select_card("red")
-	_check(online.board._enabled_targets.has("prediction:winner") and online.board._enabled_targets.has("prediction:loser"), "selecting a hand card highlights only prediction zones")
 	var submitted: Array = []
 	online.online_ui.online_action_requested.connect(func(action: CamelAction): submitted.append(action))
+	online.online_ui._select_card("red")
+	_check(submitted.is_empty(), "selecting a color card never submits a dice action")
+	var unlocked_before_legacy_roll := online._turn_unlocked
+	online._run_roll("", 0, 1.0, true)
+	_check(online._turn_unlocked == unlocked_before_legacy_roll and submitted.is_empty(), "legacy world roll input is ignored in OnlineGame")
+	_check(online.board._enabled_targets.has("prediction:winner") and online.board._enabled_targets.has("prediction:loser"), "selecting a hand card highlights only prediction zones")
 	online.online_ui.handle_board_target("prediction", "winner")
 	_check(not submitted.is_empty() and (submitted[0] as CamelAction).type == CamelAction.FINAL_BET, "clicking the highlighted board zone creates a final-bet Action")
 	online.online_ui._can_act = true

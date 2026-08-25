@@ -77,7 +77,13 @@ func play_roll(die_id: String, forced_result: int = 0, throw_strength: float = 1
 	var result := _read_top_face()
 	if forced_result in [1, 2, 3]:
 		result = forced_result
-	await _settle_to_result(result)
+		await _settle_to_result(result)
+	else:
+		# Local/authority rolls use the face that the rigid body actually left on
+		# top. There is no post-roll orientation correction in this path.
+		die.linear_velocity = Vector3.ZERO
+		die.angular_velocity = Vector3.ZERO
+		die.freeze = true
 	await get_tree().create_timer(0.06).timeout
 	return result
 
@@ -113,27 +119,29 @@ func _target_rotation(result: int) -> Vector3:
 
 
 func _settle_to_result(result: int) -> void:
-	# The authority already chose the result so every phone must show the same
-	# value. Continue the visible angular motion into a short final hop and land
-	# on that exact face instead of teleporting the rotation.
-	var current_rotation := die.rotation
-	var spin_direction := -1.0 if _rng.randi() % 2 == 0 else 1.0
-	var target_rotation := _target_rotation(result)
-	var animated_target := target_rotation + Vector3(TAU * spin_direction, TAU, TAU * -spin_direction)
-	var floor_y := maxf(0.53, die.position.y)
+	# Remote clients must reproduce the authority's face, but a full extra spin
+	# after the die stopped looked fake. Rotate only by the shortest arc needed
+	# to put the requested face upward (at most a quarter turn in normal cases).
+	var current_quaternion := die.quaternion.normalized()
+	var best_world_normal := Vector3.DOWN
+	var best_dot := -INF
+	for local_normal in FACE_NORMALS[result]:
+		var world_normal: Vector3 = die.global_basis * local_normal
+		var dot := world_normal.dot(Vector3.UP)
+		if dot > best_dot:
+			best_dot = dot
+			best_world_normal = world_normal.normalized()
+	var correction := Quaternion(best_world_normal, Vector3.UP)
+	var target_quaternion := (correction * current_quaternion).normalized()
 	die.linear_velocity = Vector3.ZERO
 	die.angular_velocity = Vector3.ZERO
 	die.freeze = true
-	die.rotation = current_rotation
 	var tween := create_tween()
 	tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	tween.tween_property(die, "position:y", floor_y + 0.20, 0.11)
-	tween.parallel().tween_property(die, "rotation", current_rotation.lerp(animated_target, 0.58), 0.11)
-	tween.set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
-	tween.tween_property(die, "position:y", 0.53, 0.17)
-	tween.parallel().tween_property(die, "rotation", animated_target, 0.17)
+	tween.tween_method(func(weight: float): die.quaternion = current_quaternion.slerp(target_quaternion, weight), 0.0, 1.0, 0.18)
+	tween.parallel().tween_property(die, "position:y", 0.53, 0.18).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
 	await tween.finished
-	die.rotation = target_rotation
+	die.quaternion = target_quaternion
 	die.position.y = 0.53
 
 

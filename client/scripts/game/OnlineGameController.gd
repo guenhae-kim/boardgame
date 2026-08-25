@@ -1,6 +1,8 @@
 class_name CamelOnlineGameController
 extends CamelGameFlowController
 
+const ROOM_LOBBY_SCENE := preload("res://scenes/ui/RoomLobby.tscn")
+
 var room_code := ""
 var local_player_id := ""
 var host_player_id := ""
@@ -19,7 +21,7 @@ func _ready() -> void:
 	_network = get_node("/root/NetworkClient")
 	_build_world()
 	_build_ui()
-	lobby_ui = CamelRoomLobbyUI.new(); add_child(lobby_ui)
+	lobby_ui = ROOM_LOBBY_SCENE.instantiate() as CamelRoomLobbyUI; add_child(lobby_ui)
 	lobby_ui.visible = false; online_ui.visible = false
 	lobby_ui.start_requested.connect(func(fill: bool): _network.start_game(fill))
 	lobby_ui.cpu_count_requested.connect(func(count: int): _network.set_cpu_count(count))
@@ -33,6 +35,37 @@ func _ready() -> void:
 	_network.connect("server_error", _on_server_error)
 	board.board_target_pressed.connect(online_ui.handle_board_target)
 	board.visible = false; dice.visible = false
+	call_deferred("_start_standalone_preview_if_needed")
+
+
+func _start_standalone_preview_if_needed() -> void:
+	# OnlineGame is normally entered through Main after CREATE/JOIN. Running this
+	# scene directly with F6 used to show a completely empty viewport, which made
+	# editor testing look broken. In debug builds only, provide a four-player
+	# visual preview without touching the real server session.
+	if not OS.is_debug_build() or get_tree().current_scene != self or not room_code.is_empty():
+		return
+	_network.set_process(false)
+	var roster := [
+		{"player_id": "player_1", "nickname": "로컬 테스트", "is_cpu": false, "connected": true, "is_host": true},
+		{"player_id": "cpu_1", "nickname": "CPU 1", "is_cpu": true, "connected": true, "is_host": false},
+		{"player_id": "cpu_2", "nickname": "CPU 2", "is_cpu": true, "connected": true, "is_host": false},
+		{"player_id": "cpu_3", "nickname": "CPU 3", "is_cpu": true, "connected": true, "is_host": false},
+	]
+	start_room({"room_code": "LOCAL", "player_id": "player_1", "lobby": {"room_code": "LOCAL", "host_player_id": "player_1", "max_slots": 4, "players": roster}})
+	var preview_rules := CamelGameRules.new(["로컬 테스트", "CPU 1", "CPU 2", "CPU 3"], 20260825)
+	for index in roster.size():
+		var player := preview_rules.state.players[index] as Dictionary
+		player["id"] = str(roster[index]["player_id"])
+		player["is_cpu"] = bool(roster[index]["is_cpu"])
+	var now := int(Time.get_unix_time_from_system() * 1000.0)
+	_on_game_update({
+		"room_code": "LOCAL", "game_sequence": 1, "actor_id": "", "events": [],
+		"public_state": CamelGameProjection.public_state(preview_rules.state),
+		"private_state": CamelGameProjection.private_states(preview_rules.state)["player_1"],
+		"authority_state": preview_rules.state.to_dict(), "game_busy": false,
+		"server_time": now, "turn_deadline_ms": now + 60000,
+	})
 
 func _build_ui() -> void:
 	online_ui = CamelOnlineGameUI.new(); ui = online_ui; add_child(ui)
@@ -152,7 +185,10 @@ func _drain_updates() -> void:
 		online_ui.set_online_context(rules.state, private_state, local_player_id, can_act)
 		if not game_busy:
 			online_ui.set_turn_deadline(int(payload.get("turn_deadline_ms", 0)), int(payload.get("server_time", 0)), can_act)
-		dice.gesture_enabled = can_act
+		# Online rolls are committed only by OnlineGameUI's dedicated DiceButton.
+		# Keeping the legacy pyramid gesture active lets the global 3D input ray
+		# see through card Controls before their GUI event is consumed.
+		dice.gesture_enabled = false
 		if can_act: _on_interaction_mode("bet", CamelGameState.RACE_CAMELS)
 		if game_busy:
 			_network.send_game_ready(int(payload.get("game_sequence", 0)))
@@ -172,7 +208,9 @@ func _on_game_unlocked(payload: Dictionary) -> void:
 	_set_phase(FlowPhase.WAITING_FOR_ACTION if rules.state.phase == "PLAYING" else FlowPhase.GAME_END, "내 차례입니다. 행동을 선택하세요." if can_act else "%s가 행동 중입니다." % _acting_player_name, can_act)
 	online_ui.set_online_context(rules.state, private_state, local_player_id, can_act)
 	online_ui.set_turn_deadline(int(payload.get("turn_deadline_ms", 0)), int(payload.get("server_time", 0)), can_act)
-	dice.gesture_enabled = can_act
+	# The hidden/local pyramid gesture must never be an online action source.
+	# The lower-right DiceButton is the single roll entry point.
+	dice.gesture_enabled = false
 	if can_act:
 		_on_interaction_mode("bet", CamelGameState.RACE_CAMELS)
 	if local_player_id == host_player_id and bool(current.get("is_cpu", false)) and rules.state.phase == "PLAYING":
@@ -234,10 +272,14 @@ func _valid_track_spaces() -> Array:
 	return result
 
 func _run_roll(_forced_die: String = "", _forced_value: int = 0, _throw_strength: float = 1.0, _from_gesture: bool = false) -> void:
-	if dice.gesture_enabled: _request_action(CamelAction.new(CamelAction.ROLL_DIE))
+	# OnlineGameUI submits ROLL_DIE directly from DiceButton. This override is
+	# intentionally a no-op so legacy local pyramid/roll signals cannot create an
+	# online roll when a card or another board component is tapped.
+	return
 
 func _on_pyramid_gesture_started() -> void:
-	if dice.gesture_enabled: online_ui.set_action_enabled(false)
+	# Pyramid interaction belongs to LocalGame only.
+	return
 
 func _on_chat_message(payload: Dictionary) -> void:
 	if str(payload.get("room_code", "")) != room_code:

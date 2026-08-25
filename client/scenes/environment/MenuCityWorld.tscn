@@ -1,0 +1,156 @@
+[gd_scene load_steps=18 format=3]
+
+[ext_resource type="PackedScene" path="res://assets/third_party/kenney/city_roads/road-straight.glb" id="1"]
+[ext_resource type="PackedScene" path="res://assets/third_party/kenney/city_roads/road-crossing.glb" id="2"]
+[ext_resource type="PackedScene" path="res://assets/third_party/kenney/city_roads/light-curved.glb" id="3"]
+[ext_resource type="PackedScene" path="res://assets/third_party/kenney/city_commercial/building-a.glb" id="4"]
+[ext_resource type="PackedScene" path="res://assets/third_party/kenney/city_commercial/building-d.glb" id="5"]
+[ext_resource type="PackedScene" path="res://assets/third_party/kenney/city_commercial/building-g.glb" id="6"]
+[ext_resource type="PackedScene" path="res://assets/third_party/kenney/city_commercial/low-detail-building-wide-a.glb" id="7"]
+[ext_resource type="PackedScene" path="res://assets/third_party/kenney/toy_cars/tree.glb" id="8"]
+[ext_resource type="PackedScene" path="res://scenes/environment/CarNPC.tscn" id="9"]
+[ext_resource type="PackedScene" path="res://scenes/environment/TrafficLight.tscn" id="10"]
+[ext_resource type="Script" path="res://scripts/environment/KenneyMaterialFix.gd" id="11"]
+[ext_resource type="Texture2D" path="res://assets/third_party/kenney/city_roads/Textures/colormap.png" id="12"]
+[ext_resource type="Texture2D" path="res://assets/third_party/kenney/city_commercial/Textures/colormap.png" id="13"]
+[ext_resource type="Texture2D" path="res://assets/third_party/kenney/toy_cars/Textures/colormap.png" id="14"]
+
+[sub_resource type="Environment" id="Environment_menu"]
+background_mode = 1
+background_color = Color(0.11, 0.18, 0.2, 1)
+ambient_light_source = 3
+ambient_light_color = Color(1, 0.83, 0.62, 1)
+ambient_light_energy = 0.38
+tonemap_mode = 2
+fog_enabled = true
+fog_light_color = Color(0.26, 0.34, 0.31, 1)
+fog_light_energy = 0.18
+fog_density = 0.004
+fog_height = -1.5
+fog_height_density = 0.28
+
+[sub_resource type="StandardMaterial3D" id="GroundMaterial"]
+albedo_color = Color(0.22, 0.31, 0.24, 1)
+roughness = 1.0
+
+[sub_resource type="BoxMesh" id="GroundMesh"]
+size = Vector3(34, 0.3, 48)
+
+[sub_resource type="Curve3D" id="CarPath"]
+closed = true
+_data = {
+"points": PackedVector3Array(0, 0, 0, 0, 0, 0, -14, 0, -3.6, 0, 0, 0, 0, 0, 0, 14, 0, -3.6, 0, 0, 0, 0, 0, 0, 14, 0, 5.8, 0, 0, 0, 0, 0, 0, -14, 0, 5.8, 0, 0, 0, 0, 0, 0, -14, 0, -3.6),
+"tilts": PackedFloat32Array(0, 0, 0, 0, 0)
+}
+point_count = 5
+
+[node name="MenuCityWorld" type="Node3D"]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_menu")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-52, -34, 0)
+light_color = Color(1, 0.83, 0.62, 1)
+light_energy = 0.72
+shadow_enabled = true
+directional_shadow_max_distance = 36.0
+
+[node name="Fill" type="OmniLight3D" parent="."]
+position = Vector3(-3, 7, 3)
+light_color = Color(1, 0.73, 0.43, 1)
+light_energy = 0.55
+omni_range = 18.0
+shadow_enabled = false
+
+[node name="Camera" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.669131, 0.743145, 0, -0.743145, 0.669131, 0, 12.8, 14.0)
+current = true
+fov = 46.0
+keep_aspect = 0
+
+[node name="Ground" type="MeshInstance3D" parent="."]
+position = Vector3(0, -0.55, 0)
+material_override = SubResource("GroundMaterial")
+mesh = SubResource("GroundMesh")
+
+[node name="Roads" type="Node3D" parent="."]
+position = Vector3(0, -0.38, 0)
+script = ExtResource("11")
+color_atlas = ExtResource("12")
+
+[node name="RoadTopLeft" parent="Roads" instance=ExtResource("1")]
+transform = Transform3D(3.3, 0, 0, 0, 1, 0, 0, 0, 3.3, -3.6, 0, -2.8)
+
+[node name="RoadTopRight" parent="Roads" instance=ExtResource("1")]
+transform = Transform3D(3.3, 0, 0, 0, 1, 0, 0, 0, 3.3, 3.6, 0, -2.8)
+
+[node name="Crossing" parent="Roads" instance=ExtResource("2")]
+transform = Transform3D(2.8, 0, 0, 0, 1, 0, 0, 0, 2.8, 0, 0, -2.8)
+
+[node name="RoadBottomLeft" parent="Roads" instance=ExtResource("1")]
+transform = Transform3D(3.3, 0, 0, 0, 1, 0, 0, 0, 3.3, -3.6, 0, 6.4)
+
+[node name="RoadBottomRight" parent="Roads" instance=ExtResource("1")]
+transform = Transform3D(3.3, 0, 0, 0, 1, 0, 0, 0, 3.3, 3.6, 0, 6.4)
+
+[node name="Buildings" type="Node3D" parent="."]
+script = ExtResource("11")
+color_atlas = ExtResource("13")
+
+[node name="Cafe" parent="Buildings" instance=ExtResource("4")]
+transform = Transform3D(1.9, 0, 0.25, 0, 1.9, 0, -0.25, 0, 1.9, -3.9, -0.42, -6.0)
+
+[node name="Market" parent="Buildings" instance=ExtResource("5")]
+transform = Transform3D(1.85, 0, -0.25, 0, 1.85, 0, 0.25, 0, 1.85, 3.9, -0.42, -5.9)
+
+[node name="Apartments" parent="Buildings" instance=ExtResource("6")]
+transform = Transform3D(-1.7, 0, 0.14, 0, 1.7, 0, -0.14, 0, -1.7, -3.8, -0.42, 9.0)
+
+[node name="Shop" parent="Buildings" instance=ExtResource("7")]
+transform = Transform3D(-1.68, 0, -0.16, 0, 1.68, 0, 0.16, 0, -1.68, 3.9, -0.42, 8.9)
+
+[node name="Trees" type="Node3D" parent="."]
+script = ExtResource("11")
+color_atlas = ExtResource("14")
+
+[node name="Tree1" parent="Trees" instance=ExtResource("8")]
+transform = Transform3D(1.7, 0, 0, 0, 1.7, 0, 0, 0, 1.7, -4.6, -0.4, 0.2)
+
+[node name="Tree2" parent="Trees" instance=ExtResource("8")]
+transform = Transform3D(1.65, 0, 0, 0, 1.65, 0, 0, 0, 1.65, 4.7, -0.4, 0.8)
+
+[node name="Tree3" parent="Trees" instance=ExtResource("8")]
+transform = Transform3D(1.75, 0, 0, 0, 1.75, 0, 0, 0, 1.75, -3.8, -0.4, 7.5)
+
+[node name="Lamps" type="Node3D" parent="."]
+script = ExtResource("11")
+color_atlas = ExtResource("12")
+
+[node name="Lamp1" parent="Lamps" instance=ExtResource("3")]
+transform = Transform3D(1.4, 0, 0, 0, 1.4, 0, 0, 0, 1.4, -4.2, -0.42, -3.0)
+
+[node name="Lamp2" parent="Lamps" instance=ExtResource("3")]
+transform = Transform3D(-1.4, 0, 0, 0, 1.4, 0, 0, 0, -1.4, 4.2, -0.42, 5.0)
+
+[node name="TrafficLight" parent="." instance=ExtResource("10")]
+transform = Transform3D(1.25, 0, 0, 0, 1.25, 0, 0, 0, 1.25, 5.5, -0.42, -2.0)
+
+[node name="CityCarPath" type="Path3D" parent="."]
+curve = SubResource("CarPath")
+
+[node name="CarFollowA" type="PathFollow3D" parent="CityCarPath"]
+rotation_mode = 2
+
+[node name="Car" parent="CityCarPath/CarFollowA" instance=ExtResource("9")]
+scale = Vector3(0.9, 0.9, 0.9)
+speed = 0.028
+start_progress_ratio = 0.08
+
+[node name="CarFollowB" type="PathFollow3D" parent="CityCarPath"]
+rotation_mode = 2
+
+[node name="Car" parent="CityCarPath/CarFollowB" instance=ExtResource("9")]
+scale = Vector3(0.78, 0.78, 0.78)
+speed = 0.021
+start_progress_ratio = 0.57

@@ -4,9 +4,9 @@ func _init() -> void:
 	call_deferred("_capture")
 
 func _capture() -> void:
-	root.size = Vector2i(480, 900)
-	root.content_scale_factor = float(root.size.x) / 1280.0
-	var lobby := CamelRoomLobbyUI.new()
+	root.size = Vector2i(390, 844)
+	root.content_scale_factor = 1.0
+	var lobby := (load("res://scenes/ui/RoomLobby.tscn") as PackedScene).instantiate() as CamelRoomLobbyUI
 	root.add_child(lobby)
 	lobby.update_lobby({
 		"room_code": "K7DF",
@@ -14,8 +14,8 @@ func _capture() -> void:
 		"max_slots": 4,
 		"started": false,
 		"players": [
-			{"nickname": "그내", "is_host": true, "is_cpu": false, "connected": true},
-			{"nickname": "철수", "is_host": false, "is_cpu": false, "connected": true},
+			{"player_id": "player_1", "nickname": "그내", "is_host": true, "is_cpu": false, "connected": true},
+			{"player_id": "player_2", "nickname": "철수", "is_host": false, "is_cpu": false, "connected": true},
 		],
 	}, "player_1")
 	await create_timer(0.5).timeout

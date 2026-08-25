@@ -20,6 +20,7 @@ func _run() -> void:
 		var result := await dice.play_roll(die_id, 0, strength)
 		elapsed_total += float(Time.get_ticks_msec() - started) / 1000.0
 		_check(result in [1, 2, 3], "%s die returns a legal 1-3 face" % die_id)
+		_check(dice._read_top_face() == result, "%s natural roll result comes from its actual stopped top face" % die_id)
 		_check(absf(dice.die.position.x) <= 3.75 and absf(dice.die.position.z) <= 2.75 and dice.die.position.y >= -0.7, "%s die remains inside the tray at strength %.1f" % [die_id, strength])
 	var average := elapsed_total / die_ids.size()
 	_check(average <= 1.6, "average dice animation stays at or below 1.6 seconds (%.2fs)" % average)
