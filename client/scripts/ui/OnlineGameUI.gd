@@ -7,6 +7,7 @@ signal chat_send_requested(text: String)
 signal sound_requested(cue: String)
 signal overview_requested
 signal leave_game_requested
+signal nickname_change_requested(nickname: String)
 
 const CAMEL_NAMES := {"blue": "파랑", "yellow": "노랑", "green": "초록", "red": "빨강", "purple": "보라"}
 const CAMEL_UI_COLORS := {"blue": Color("4f91ff"), "yellow": Color("e8bd3f"), "green": Color("48bd70"), "red": Color("e56861"), "purple": Color("9a72d5")}
@@ -634,11 +635,24 @@ func _build_settings_panel() -> void:
 	title.add_theme_font_size_override("font_size", 22)
 	box.add_child(title)
 	var description := Label.new()
-	description.text = "게임에서 나가면 홈 화면으로 돌아갑니다."
+	description.text = "게임에서 나가면 현재 자리는 CPU가 이어서 플레이합니다."
 	description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	description.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	description.add_theme_color_override("font_color", Color("765b48"))
 	box.add_child(description)
+	var nickname_input := LineEdit.new()
+	nickname_input.name = "NicknameInput"
+	nickname_input.placeholder_text = "새 닉네임"
+	nickname_input.max_length = 20
+	nickname_input.custom_minimum_size.y = 44
+	box.add_child(nickname_input)
+	var change_nickname_callback := func():
+		var value := nickname_input.text.strip_edges().left(20)
+		if not value.is_empty():
+			nickname_change_requested.emit(value)
+			nickname_input.clear()
+	var nickname_button := _online_button("닉네임 변경", change_nickname_callback, Color("d8a340"))
+	box.add_child(nickname_button)
 	var leave_button := _online_button("게임 나가기", _confirm_leave_game, Color("d9655b"))
 	leave_button.custom_minimum_size.y = 48
 	box.add_child(leave_button)
@@ -682,6 +696,9 @@ func _build_result_panel() -> void:
 	_result_label.add_theme_color_override("font_color", Color("493528"))
 	_result_label.add_theme_font_size_override("font_size", 19)
 	box.add_child(_result_label)
+	var leave_button := _online_button("게임 나가기", _confirm_leave_game, Color("d9655b"))
+	leave_button.custom_minimum_size.y = 56
+	box.add_child(leave_button)
 	margin.add_child(box)
 	_result_panel.add_child(margin)
 	_root.add_child(_result_panel)
@@ -826,13 +843,13 @@ func _apply_responsive_layout() -> void:
 		_tile_face_panel.position = Vector2(viewport_size.x * 0.5 - 115, viewport_size.y * 0.52)
 		_tile_face_panel.size = Vector2(230, 108)
 	if _result_panel != null:
-		var result_size := Vector2(viewport_size.x * (0.82 if portrait else 0.46), viewport_size.y * (0.30 if portrait else 0.48))
+		var result_size := Vector2(viewport_size.x * (0.84 if portrait else 0.46), viewport_size.y * (0.38 if portrait else 0.52))
 		_result_panel.position = (viewport_size - result_size) * 0.5
 		_result_panel.size = result_size
 		_result_title.add_theme_font_size_override("font_size", int(28 * ui_scale))
 		_result_reason.add_theme_font_size_override("font_size", int(13 * ui_scale))
 		_result_label.add_theme_font_size_override("font_size", int(19 * ui_scale))
 	if _settings_panel != null:
-		var settings_size := Vector2(minf(330.0 * ui_scale, viewport_size.x - pad * 2.0), 230.0 * ui_scale)
+		var settings_size := Vector2(minf(350.0 * ui_scale, viewport_size.x - pad * 2.0), 330.0 * ui_scale)
 		_settings_panel.position = (viewport_size - settings_size) * 0.5
 		_settings_panel.size = settings_size

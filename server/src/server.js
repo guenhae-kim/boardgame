@@ -139,7 +139,7 @@ export function createGameServer(options = {}) {
         if (type === MessageType.CREATE_ROOM) {
           if (socket.context.room) throw new ProtocolError("ALREADY_IN_ROOM", "Already in a room");
           const room = roomManager.createRoom();
-          const player = room.addPlayer(socket, validatedNickname(payload.nickname));
+          const player = room.addPlayer(socket, validatedNickname(payload.nickname), payload.identity_id);
           socket.context = { ...socket.context, room, playerId: player.id };
           send(socket, MessageType.ROOM_CREATED, {
             room_code: room.code,
@@ -158,7 +158,7 @@ export function createGameServer(options = {}) {
           if (!room) throw new ProtocolError("ROOM_NOT_FOUND", "Room code was not found");
           const nickname = validatedNickname(payload.nickname);
           let player;
-          player = room.addPlayer(socket, nickname);
+          player = room.addPlayer(socket, nickname, payload.identity_id);
           socket.context = { ...socket.context, room, playerId: player.id };
           send(socket, MessageType.ROOM_JOINED, {
             room_code: room.code,
@@ -191,6 +191,36 @@ export function createGameServer(options = {}) {
           return;
         }
 
+        if (type === MessageType.SESSION_CHECK) {
+          if (socket.context.room) throw new ProtocolError("ALREADY_IN_ROOM", "Already in a room");
+          const room = roomManager.getRoom(payload.room_code);
+          if (!room) {
+            send(socket, MessageType.SESSION_STATUS, { status: "invalid", reason: "room_not_found" });
+            return;
+          }
+          const result = room.sessionStatus(String(payload.reconnect_token || ""));
+          if (result.status === "finished") {
+            const player = result.player;
+            room.leaveByToken(String(payload.reconnect_token || ""));
+            send(socket, MessageType.SESSION_STATUS, {
+              status: "finished", room_code: room.code, player_id: player.id,
+            });
+            roomManager.removeIfEmpty(room);
+            return;
+          }
+          if (result.status !== "active") {
+            send(socket, MessageType.SESSION_STATUS, { status: "invalid", reason: "token_invalid" });
+            return;
+          }
+          const player = result.player;
+          send(socket, MessageType.SESSION_STATUS, {
+            status: "active", room_code: room.code, player_id: player.id,
+            nickname: player.nickname, started: room.started,
+            round: Number(room.publicState?.leg_number || 0),
+          });
+          return;
+        }
+
         if (type === MessageType.LEAVE_ROOM) {
           const { room, playerId } = socket.context;
           if (!room || !playerId) throw new ProtocolError("NOT_IN_ROOM", "Join a room first");
@@ -200,6 +230,25 @@ export function createGameServer(options = {}) {
           room.broadcast(MessageType.PLAYER_LEFT, { player_id: playerId, reconnecting: false });
           room.broadcastLobby();
           roomManager.removeIfEmpty(room);
+          return;
+        }
+
+        if (type === MessageType.LEAVE_SESSION) {
+          if (socket.context.room) throw new ProtocolError("ALREADY_IN_ROOM", "Use LEAVE_ROOM for an attached session");
+          const room = roomManager.getRoom(payload.room_code);
+          if (!room) throw new ProtocolError("ROOM_NOT_FOUND", "Room code was not found");
+          const player = room.leaveByToken(String(payload.reconnect_token || ""));
+          send(socket, MessageType.ROOM_LEFT, { room_code: room.code, player_id: player.id });
+          room.broadcast(MessageType.PLAYER_LEFT, { player_id: player.id, reconnecting: false, cpu_takeover: room.started && !room.isGameFinished() });
+          room.broadcastLobby();
+          roomManager.removeIfEmpty(room);
+          return;
+        }
+
+        if (type === MessageType.UPDATE_NICKNAME) {
+          const { room, playerId } = socket.context;
+          if (!room || !playerId) throw new ProtocolError("NOT_IN_ROOM", "Join a room first");
+          room.updateNickname(playerId, validatedNickname(payload.nickname));
           return;
         }
 

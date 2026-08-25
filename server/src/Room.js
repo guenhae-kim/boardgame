@@ -36,13 +36,14 @@ export class Room {
     this.turnDeadlineMs = 0;
   }
 
-  addPlayer(socket, nickname) {
+  addPlayer(socket, nickname, identityId = "") {
     if (this.started) throw new ProtocolError("GAME_ALREADY_STARTED", "The game has already started");
     if (this.players.size >= this.maxPlayers) throw new ProtocolError("ROOM_FULL", "Room is full");
     const number = this.nextPlayerNumber++;
     const player = {
       id: `player_${number}`,
       nickname,
+      identityId: String(identityId || ""),
       colorIndex: (number - 1) % 8,
       position: { x: (number - 1) * 2 - 1, y: 0.6, z: 0 },
       direction: { x: 0, z: 0 },
@@ -59,6 +60,7 @@ export class Room {
   }
 
   reconnect(socket, token) {
+    if (this.isGameFinished()) throw new ProtocolError("GAME_FINISHED", "Finished games cannot be resumed");
     const player = [...this.players.values()].find((candidate) => !candidate.isCpu && candidate.reconnectToken === token);
     if (!player) throw new ProtocolError("RECONNECT_FAILED", "Session token is invalid or expired");
     if (player.socket && player.socket.readyState === 1) player.socket.close(4001, "Reconnected elsewhere");
@@ -86,12 +88,8 @@ export class Room {
     if (!player || player.isCpu || player.socket !== socket) {
       throw new ProtocolError("NOT_IN_ROOM", "Player is not in this room");
     }
-    if (this.started) {
-      // Keep the authoritative seat so turn order/state projections remain
-      // stable, but invalidate the token so a deliberate leave can never be
-      // mistaken for a temporary disconnect/reconnect.
-      this.markDisconnected(playerId, socket);
-      player.reconnectToken = randomUUID();
+    if (this.started && !this.isGameFinished()) {
+      this.takeOverWithCpu(player, "explicit_leave");
     } else {
       this.pendingReadyPlayers.delete(playerId);
       this.players.delete(playerId);
@@ -101,6 +99,85 @@ export class Room {
       }
     }
     return player;
+  }
+
+  isGameFinished() {
+    return this.publicState?.phase === "GAME_OVER";
+  }
+
+  playerForToken(token) {
+    return [...this.players.values()].find(
+      (candidate) => !candidate.isCpu && candidate.reconnectToken && candidate.reconnectToken === token,
+    ) || null;
+  }
+
+  sessionStatus(token) {
+    const player = this.playerForToken(token);
+    if (!player) return { status: "invalid" };
+    if (this.isGameFinished()) return { status: "finished", player };
+    return { status: "active", player };
+  }
+
+  leaveByToken(token) {
+    const player = this.playerForToken(token);
+    if (!player) throw new ProtocolError("RECONNECT_FAILED", "Session token is invalid or expired");
+    if (this.started && !this.isGameFinished()) this.takeOverWithCpu(player, "explicit_leave");
+    else this.removeHuman(player);
+    return player;
+  }
+
+  removeHuman(player) {
+    player.reconnectToken = "";
+    this.pendingReadyPlayers.delete(player.id);
+    this.players.delete(player.id);
+    if (this.hostPlayerId === player.id) {
+      this.hostPlayerId = "";
+      const nextHost = [...this.players.values()].find((candidate) => !candidate.isCpu && candidate.connected);
+      this.hostPlayerId = nextHost?.id || "";
+    }
+    this.tryUnlockGame();
+  }
+
+  takeOverWithCpu(player, reason = "reconnect_timeout") {
+    const wasHost = player.id === this.hostPlayerId;
+    player.reconnectToken = "";
+    player.socket = null;
+    player.isCpu = true;
+    player.connected = true;
+    player.disconnectedAt = 0;
+    this.pendingReadyPlayers.delete(player.id);
+    for (const state of [this.publicState, this.authorityState]) {
+      const statePlayer = state?.players?.find((candidate) => String(candidate.id) === player.id);
+      if (statePlayer) {
+        statePlayer.is_cpu = true;
+        statePlayer.connected = true;
+      }
+    }
+    if (wasHost) {
+      this.hostPlayerId = "";
+      this.migrateHost();
+    }
+    this.broadcast(MessageType.PLAYER_TAKEOVER, {
+      room_code: this.code, player_id: player.id, nickname: player.nickname,
+      reason, is_cpu: true,
+    });
+    this.broadcastLobby();
+    this.tryUnlockGame();
+    return player;
+  }
+
+  updateNickname(playerId, nickname) {
+    const player = this.players.get(playerId);
+    if (!player || player.isCpu) throw new ProtocolError("INVALID_ACTOR", "Human player is required");
+    player.nickname = nickname;
+    for (const state of [this.publicState, this.authorityState]) {
+      const statePlayer = state?.players?.find((candidate) => String(candidate.id) === playerId);
+      if (statePlayer) statePlayer.name = nickname;
+    }
+    this.broadcast(MessageType.NICKNAME_UPDATED, {
+      room_code: this.code, player_id: playerId, nickname,
+    });
+    this.broadcastLobby();
   }
 
   migrateHost() {
@@ -125,9 +202,10 @@ export class Room {
   }
 
   expireDisconnected(now = Date.now()) {
-    if (this.started) return;
     for (const player of [...this.players.values()]) {
-      if (!player.isCpu && !player.connected && now - player.disconnectedAt >= RECONNECT_GRACE_MS) this.players.delete(player.id);
+      if (player.isCpu || player.connected || now - player.disconnectedAt < RECONNECT_GRACE_MS) continue;
+      if (this.started && !this.isGameFinished()) this.takeOverWithCpu(player, "reconnect_timeout");
+      else this.removeHuman(player);
     }
   }
 
@@ -207,6 +285,7 @@ export class Room {
 
   requestGameAction(playerId, action, requestId) {
     if (!this.started || !this.publicState) throw new ProtocolError("GAME_NOT_READY", "The game is not ready");
+    if (this.isGameFinished()) throw new ProtocolError("GAME_FINISHED", "Finished games do not accept gameplay actions");
     if (this.gameBusy) throw new ProtocolError("GAME_BUSY", "The previous action is still resolving");
     const player = this.players.get(playerId);
     if (!player || player.isCpu) throw new ProtocolError("INVALID_ACTOR", "Only a connected human can send this action");

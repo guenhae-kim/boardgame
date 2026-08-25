@@ -4,6 +4,9 @@ extends Control
 signal room_entered(payload: Dictionary)
 
 @onready var nickname_input: LineEdit = $MenuCard/Margin/Content/Nickname
+@onready var nickname_label: Label = $MenuCard/Margin/Content/NicknameLabel
+@onready var identity_name: Label = $MenuCard/Margin/Content/IdentityName
+@onready var change_nickname: Button = $MenuCard/Margin/Content/ChangeNickname
 @onready var create_button: Button = $MenuCard/Margin/Content/CreateButton
 @onready var join_button: Button = $MenuCard/Margin/Content/JoinButton
 @onready var status_label: Label = $MenuCard/Margin/Content/Status
@@ -18,12 +21,15 @@ func _ready() -> void:
 	join_button.pressed.connect(_on_join_pressed)
 	join_sheet.join_requested.connect(_on_join_code_submitted)
 	nickname_input.text_submitted.connect(func(_value: String): _on_create_pressed())
+	change_nickname.pressed.connect(_toggle_nickname_edit)
+	_network.identity_changed.connect(func(_value: String): _apply_identity_state())
 	_network.connection_status_changed.connect(_on_connection_status_changed)
 	_network.room_created.connect(_on_room_entered)
 	_network.room_joined.connect(_on_room_entered)
 	_network.server_error.connect(_on_server_error)
 	$TopBar/SoundButton.pressed.connect(func(): toast.show_message("사운드 설정은 준비 중이에요"))
 	_on_connection_status_changed("Connecting")
+	_apply_identity_state()
 	modulate.a = 0.0
 	create_tween().tween_property(self, "modulate:a", 1.0, 0.35)
 
@@ -55,7 +61,32 @@ func _on_join_code_submitted(code: String) -> void:
 
 
 func _nickname() -> String:
-	return nickname_input.text.strip_edges().left(20)
+	return (nickname_input.text if nickname_input.visible else str(_network.nickname)).strip_edges().left(20)
+
+func _apply_identity_state() -> void:
+	var known: bool = bool(_network.has_identity())
+	identity_name.visible = known
+	nickname_input.visible = not known
+	change_nickname.visible = known
+	nickname_label.text = "다시 만나 반가워요!" if known else "처음 오셨네요! 닉네임을 정해주세요"
+	if known:
+		identity_name.text = str(_network.nickname)
+
+func _toggle_nickname_edit() -> void:
+	if not nickname_input.visible:
+		nickname_input.text = str(_network.nickname)
+		nickname_input.visible = true
+		identity_name.visible = false
+		change_nickname.text = "닉네임 저장"
+		nickname_input.grab_focus()
+		return
+	var value := nickname_input.text.strip_edges().left(20)
+	if value.is_empty():
+		toast.show_message("닉네임을 입력해 주세요")
+		return
+	_network.update_nickname(value)
+	change_nickname.text = "닉네임 변경"
+	_apply_identity_state()
 
 
 func _on_connection_status_changed(status: String) -> void:

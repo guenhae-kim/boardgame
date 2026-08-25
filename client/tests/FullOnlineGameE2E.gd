@@ -110,6 +110,27 @@ func _run() -> void:
 	_check(finished, "Human 2 + CPU 2 complete a full online game")
 	_check(online.rules != null and online.rules.state.phase == "GAME_OVER", "host and guest finish on the same public phase")
 	_check(reconnected, "mid-game reconnect was exercised")
+
+	# A finished result remains visible until the player explicitly leaves, but
+	# that leave must revoke the session and must never become a resume candidate.
+	guest.send_text(Protocol.encode_message(Protocol.LEAVE_ROOM))
+	var guest_left := await _next_message(guest, Protocol.ROOM_LEFT)
+	_check(not guest_left.is_empty(), "finished-game leave receives authoritative ROOM_LEFT ack")
+	var stale_checker := await _connect_peer()
+	stale_checker.send_text(Protocol.encode_message(Protocol.SESSION_CHECK, {
+		"room_code": created["room_code"], "reconnect_token": guest_token,
+	}))
+	var stale_status := await _next_message(stale_checker, Protocol.SESSION_STATUS)
+	_check(str(stale_status.get("payload", {}).get("status", "")) == "invalid", "finished player token is absent from resume candidates after leave")
+	stale_checker.close()
+
+	var host_left: Array = []
+	network.room_left.connect(func(value: Dictionary): host_left.append(value), CONNECT_ONE_SHOT)
+	network.leave_room()
+	await _wait_array(host_left)
+	_check(not host_left.is_empty(), "Godot client waits for server leave acknowledgement")
+	_check(network.room_code.is_empty() and network.reconnect_token.is_empty(), "acknowledged leave clears only the room session")
+	_check(network.has_identity(), "persistent browser identity survives room cleanup")
 	print("Full multiplayer E2E: ", "FAILED" if failed else "PASSED", " · actions=", actions, " · final_sequence=", sequence_count)
 	guest.close()
 	quit(1 if failed else 0)

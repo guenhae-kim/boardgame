@@ -26,6 +26,7 @@ func _ready() -> void:
 	lobby_ui.start_requested.connect(func(fill: bool): _network.start_game(fill))
 	lobby_ui.cpu_count_requested.connect(func(count: int): _network.set_cpu_count(count))
 	lobby_ui.leave_requested.connect(_network.leave_room)
+	lobby_ui.nickname_change_requested.connect(_network.update_nickname)
 	_network.connect("lobby_state", _on_lobby_state)
 	_network.connect("game_authority_requested", _on_authority_request)
 	_network.connect("game_action_requested", _on_action_request)
@@ -33,6 +34,8 @@ func _ready() -> void:
 	_network.connect("game_unlocked", _on_game_unlocked)
 	_network.connect("game_timeout_requested", _on_timeout_request)
 	_network.connect("chat_message", _on_chat_message)
+	_network.connect("nickname_updated", _on_nickname_updated)
+	_network.connect("player_takeover", _on_player_takeover)
 	_network.connect("server_error", _on_server_error)
 	board.board_target_pressed.connect(online_ui.handle_board_target)
 	board.visible = false; dice.visible = false
@@ -74,6 +77,7 @@ func _build_ui() -> void:
 	online_ui.interaction_mode_changed.connect(_on_interaction_mode)
 	online_ui.chat_send_requested.connect(Callable(_network, "send_chat"))
 	online_ui.sound_requested.connect(sound_manager.play)
+	online_ui.nickname_change_requested.connect(_network.update_nickname)
 	online_ui.overview_requested.connect(func(): camera_director.show_board(0.35))
 
 func start_room(payload: Dictionary) -> void:
@@ -292,6 +296,34 @@ func _on_chat_message(payload: Dictionary) -> void:
 	online_ui.receive_chat(str(payload.get("nickname", "Player")), text, player_id)
 	if rules != null and not player_id.is_empty():
 		board.show_reaction(player_id, text, rules.state)
+
+func _on_nickname_updated(payload: Dictionary) -> void:
+	if str(payload.get("room_code", "")) != room_code or rules == null:
+		return
+	var changed_id := str(payload.get("player_id", ""))
+	var player := rules.state.player_by_id(changed_id)
+	if not player.is_empty():
+		player["name"] = str(payload.get("nickname", player.get("name", changed_id)))
+	online_ui.set_online_context(rules.state, private_state, local_player_id, _can_local_player_act())
+
+func _on_player_takeover(payload: Dictionary) -> void:
+	if str(payload.get("room_code", "")) != room_code or rules == null:
+		return
+	var changed_id := str(payload.get("player_id", ""))
+	var player := rules.state.player_by_id(changed_id)
+	if not player.is_empty():
+		player["is_cpu"] = true
+		player["connected"] = true
+	online_ui.receive_chat("게임", "%s님이 나가서 CPU가 이어서 플레이합니다." % str(payload.get("nickname", "플레이어")), changed_id)
+	online_ui.set_online_context(rules.state, private_state, local_player_id, _can_local_player_act())
+	if local_player_id == host_player_id and _turn_unlocked and str(rules.state.current_player().get("id", "")) == changed_id:
+		_schedule_cpu(changed_id)
+
+func _can_local_player_act() -> bool:
+	if rules == null or rules.state.phase != "PLAYING" or not _turn_unlocked:
+		return false
+	var current := rules.state.current_player()
+	return str(current.get("id", "")) == local_player_id and not bool(current.get("is_cpu", false))
 
 func _on_server_error(code: String, message: String) -> void:
 	if room_code.is_empty(): return

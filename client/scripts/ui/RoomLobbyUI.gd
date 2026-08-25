@@ -4,6 +4,7 @@ extends CanvasLayer
 signal start_requested(fill_cpu: bool)
 signal cpu_count_requested(count: int)
 signal leave_requested
+signal nickname_change_requested(nickname: String)
 
 @onready var root: Control = $Root
 @onready var _root: Control = $Root # Compatibility for existing flow diagnostics.
@@ -75,8 +76,8 @@ func _build_settings() -> void:
 	panel.visible = false
 	panel.z_index = 100
 	panel.set_anchors_preset(Control.PRESET_CENTER)
-	panel.position = Vector2(-270, -175)
-	panel.size = Vector2(540, 350)
+	panel.position = Vector2(-270, -220)
+	panel.size = Vector2(540, 440)
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color("fff4d8")
 	style.border_color = Color("d99b5c")
@@ -101,6 +102,21 @@ func _build_settings() -> void:
 	guide.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	guide.add_theme_font_size_override("font_size", 24)
 	box.add_child(guide)
+	var nickname_input := LineEdit.new()
+	nickname_input.placeholder_text = "새 닉네임"
+	nickname_input.max_length = 20
+	nickname_input.custom_minimum_size.y = 60
+	nickname_input.add_theme_font_size_override("font_size", 24)
+	box.add_child(nickname_input)
+	var nickname_button := Button.new()
+	nickname_button.text = "닉네임 변경"
+	nickname_button.custom_minimum_size.y = 58
+	nickname_button.pressed.connect(func():
+		var value := nickname_input.text.strip_edges().left(20)
+		if not value.is_empty():
+			nickname_change_requested.emit(value)
+			nickname_input.clear())
+	box.add_child(nickname_button)
 	var leave_button := Button.new()
 	leave_button.text = "게임 나가기"
 	leave_button.custom_minimum_size.y = 72

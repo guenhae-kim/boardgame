@@ -26,7 +26,7 @@ export class RoomManager {
   }
 
   removeIfEmpty(room) {
-    if (room && room.players.size === 0) {
+    if (room && (room.players.size === 0 || [...room.players.values()].every((player) => player.isCpu))) {
       this.rooms.delete(room.code);
     }
   }

@@ -98,6 +98,12 @@ test("two players can join, move, remain room-isolated, and leave", async () => 
   assert.equal(chat.payload.text, "hello room");
   assert.equal(chat.payload.room_code, created.payload.room_code);
 
+  b.socket.send(encode(MessageType.UPDATE_NICKNAME, { nickname: "Renamed B" }));
+  const renamed = await a.next(MessageType.NICKNAME_UPDATED);
+  assert.equal(renamed.payload.player_id, joined.payload.player_id);
+  assert.equal(renamed.payload.nickname, "Renamed B");
+  assert.equal(server.roomManager.getRoom(created.payload.room_code).players.get(joined.payload.player_id).nickname, "Renamed B");
+
   b.socket.close();
   assert.equal((await a.next(MessageType.PLAYER_LEFT)).payload.player_id, joined.payload.player_id);
 
@@ -339,4 +345,150 @@ test("connected human receives host authority after the host disconnects", async
   assert.deepEqual(migration.payload.authority_state, state);
   guest.socket.close();
   await server.close();
+});
+
+test("session check validates before resume and detached leave revokes the token", async () => {
+  const server = createGameServer();
+  await new Promise((resolve) => server.httpServer.listen(0, "127.0.0.1", resolve));
+  const { port } = server.httpServer.address();
+  const url = `ws://127.0.0.1:${port}/ws`;
+  const host = await connect(url);
+  host.socket.send(encode(MessageType.CREATE_ROOM, { nickname: "Persistent", identity_id: "browser-id" }));
+  const created = await host.next(MessageType.ROOM_CREATED);
+  host.socket.close();
+
+  const checker = await connect(url);
+  checker.socket.send(encode(MessageType.SESSION_CHECK, {
+    room_code: created.payload.room_code, reconnect_token: created.payload.reconnect_token,
+  }));
+  const status = await checker.next(MessageType.SESSION_STATUS);
+  assert.equal(status.payload.status, "active");
+  assert.equal(status.payload.player_id, created.payload.player_id);
+
+  checker.socket.send(encode(MessageType.LEAVE_SESSION, {
+    room_code: created.payload.room_code, reconnect_token: created.payload.reconnect_token,
+  }));
+  await checker.next(MessageType.ROOM_LEFT);
+  checker.socket.send(encode(MessageType.RECONNECT, {
+    room_code: created.payload.room_code, reconnect_token: created.payload.reconnect_token,
+  }));
+  const rejected = await checker.next(MessageType.ERROR);
+  assert.ok(["ROOM_NOT_FOUND", "RECONNECT_FAILED"].includes(rejected.payload.code));
+  checker.socket.close();
+  await server.close();
+});
+
+test("explicit leave during a running game immediately creates a CPU takeover and revokes reconnect", async () => {
+  const server = createGameServer();
+  await new Promise((resolve) => server.httpServer.listen(0, "127.0.0.1", resolve));
+  const { port } = server.httpServer.address();
+  const url = `ws://127.0.0.1:${port}/ws`;
+  const host = await connect(url);
+  const guest = await connect(url);
+  host.socket.send(encode(MessageType.CREATE_ROOM, { nickname: "Host" }));
+  const created = await host.next(MessageType.ROOM_CREATED);
+  guest.socket.send(encode(MessageType.JOIN_ROOM, { nickname: "Leaving", room_code: created.payload.room_code }));
+  const joined = await guest.next(MessageType.ROOM_JOINED);
+  host.socket.send(encode(MessageType.START_GAME, { fill_cpu: true }));
+  const request = await host.next(MessageType.GAME_AUTHORITY_REQUEST);
+  const players = request.payload.players.map((player) => ({ id: player.player_id, name: player.nickname, is_cpu: player.is_cpu }));
+  const state = { players, current_player_index: 1, phase: "PLAYING", leg_number: 2 };
+  const privateStates = Object.fromEntries(players.map((player) => [player.id, { player_id: player.id, final_cards: ["secret"] }]));
+  host.socket.send(encode(MessageType.GAME_COMMIT, {
+    actor_id: "", events: [], public_state: state, private_states: privateStates, authority_state: structuredClone(state),
+  }));
+  await host.next(MessageType.GAME_UPDATE);
+  await guest.next(MessageType.GAME_UPDATE);
+
+  guest.socket.send(encode(MessageType.LEAVE_ROOM));
+  await guest.next(MessageType.ROOM_LEFT);
+  const takeover = await host.next(MessageType.PLAYER_TAKEOVER);
+  assert.equal(takeover.payload.player_id, joined.payload.player_id);
+  assert.equal(takeover.payload.reason, "explicit_leave");
+  const room = server.roomManager.getRoom(created.payload.room_code);
+  const seat = room.players.get(joined.payload.player_id);
+  assert.equal(seat.isCpu, true);
+  assert.equal(seat.reconnectToken, "");
+  assert.equal(room.publicState.players.find((player) => player.id === joined.payload.player_id).is_cpu, true);
+
+  const attacker = await connect(url);
+  attacker.socket.send(encode(MessageType.RECONNECT, {
+    room_code: created.payload.room_code, reconnect_token: joined.payload.reconnect_token,
+  }));
+  assert.equal((await attacker.next(MessageType.ERROR)).payload.code, "RECONNECT_FAILED");
+  host.socket.close();
+  guest.socket.close();
+  attacker.socket.close();
+  await server.close();
+});
+
+test("finished game is not resumable and stale session check cleans membership", async (t) => {
+  const server = createGameServer();
+  await new Promise((resolve) => server.httpServer.listen(0, "127.0.0.1", resolve));
+  const { port } = server.httpServer.address();
+  const url = `ws://127.0.0.1:${port}/ws`;
+  const host = await connect(url);
+  const guest = await connect(url);
+  let checker;
+  t.after(async () => {
+    host.socket.close();
+    guest.socket.close();
+    checker?.socket.close();
+    await server.close();
+  });
+  host.socket.send(encode(MessageType.CREATE_ROOM, { nickname: "Host" }));
+  const created = await host.next(MessageType.ROOM_CREATED);
+  guest.socket.send(encode(MessageType.JOIN_ROOM, { nickname: "Finisher", room_code: created.payload.room_code }));
+  const joined = await guest.next(MessageType.ROOM_JOINED);
+  host.socket.send(encode(MessageType.START_GAME, { fill_cpu: true }));
+  const request = await host.next(MessageType.GAME_AUTHORITY_REQUEST);
+  const players = request.payload.players.map((player) => ({ id: player.player_id, name: player.nickname, is_cpu: player.is_cpu, money: 3 }));
+  const finished = { players, current_player_index: 0, phase: "GAME_OVER", leg_number: 5 };
+  host.socket.send(encode(MessageType.GAME_COMMIT, {
+    actor_id: "", events: [], public_state: finished,
+    private_states: Object.fromEntries(players.map((player) => [player.id, {}])), authority_state: structuredClone(finished),
+  }));
+  await host.next(MessageType.GAME_UPDATE);
+  await guest.next(MessageType.GAME_UPDATE);
+  guest.socket.close();
+
+  checker = await connect(url);
+  checker.socket.send(encode(MessageType.SESSION_CHECK, {
+    room_code: created.payload.room_code, reconnect_token: joined.payload.reconnect_token,
+  }));
+  assert.equal((await checker.next(MessageType.SESSION_STATUS)).payload.status, "finished");
+  checker.socket.send(encode(MessageType.RECONNECT, {
+    room_code: created.payload.room_code, reconnect_token: joined.payload.reconnect_token,
+  }));
+  assert.equal((await checker.next(MessageType.ERROR)).payload.code, "GAME_FINISHED");
+});
+
+test("network disconnect keeps reconnect grace, then independently converts the seat to CPU", async (t) => {
+  const server = createGameServer();
+  await new Promise((resolve) => server.httpServer.listen(0, "127.0.0.1", resolve));
+  const { port } = server.httpServer.address();
+  const url = `ws://127.0.0.1:${port}/ws`;
+  const host = await connect(url);
+  const guest = await connect(url);
+  t.after(async () => { host.socket.close(); guest.socket.close(); await server.close(); });
+  host.socket.send(encode(MessageType.CREATE_ROOM, { nickname: "Host" }));
+  const created = await host.next(MessageType.ROOM_CREATED);
+  guest.socket.send(encode(MessageType.JOIN_ROOM, { nickname: "Temporary", room_code: created.payload.room_code }));
+  const joined = await guest.next(MessageType.ROOM_JOINED);
+  const room = server.roomManager.getRoom(created.payload.room_code);
+  room.started = true;
+  room.publicState = {
+    phase: "PLAYING", current_player_index: 1,
+    players: room.publicPlayers().map((player) => ({ id: player.player_id, name: player.nickname, is_cpu: player.is_cpu })),
+  };
+  room.authorityState = structuredClone(room.publicState);
+  guest.socket.close();
+  await host.next(MessageType.PLAYER_LEFT);
+  assert.equal(room.players.get(joined.payload.player_id).isCpu, false);
+  assert.equal(room.players.get(joined.payload.player_id).reconnectToken, joined.payload.reconnect_token);
+  room.expireDisconnected(Date.now() + 61_000);
+  const takeover = await host.next(MessageType.PLAYER_TAKEOVER);
+  assert.equal(takeover.payload.reason, "reconnect_timeout");
+  assert.equal(room.players.get(joined.payload.player_id).isCpu, true);
+  assert.equal(room.players.get(joined.payload.player_id).reconnectToken, "");
 });

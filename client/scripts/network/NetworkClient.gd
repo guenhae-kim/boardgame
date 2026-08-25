@@ -4,6 +4,10 @@ signal connection_status_changed(status: String)
 signal room_created(payload: Dictionary)
 signal room_joined(payload: Dictionary)
 signal room_left(payload: Dictionary)
+signal session_status(payload: Dictionary)
+signal identity_changed(nickname: String)
+signal nickname_updated(payload: Dictionary)
+signal player_takeover(payload: Dictionary)
 signal player_joined(payload: Dictionary)
 signal player_left(player_id: String)
 signal player_state(payload: Dictionary)
@@ -20,12 +24,19 @@ var _socket := WebSocketPeer.new()
 var _last_state := WebSocketPeer.STATE_CLOSED
 var _heartbeat_elapsed := 0.0
 var _reconnect_elapsed := 0.0
+var _leave_elapsed := 0.0
 var room_code := ""
 var player_id := ""
 var reconnect_token := ""
+var identity_player_id := ""
+var nickname := ""
 var _leave_pending := false
+var _attached_to_room := false
+var _auto_reconnect_after_drop := false
+var _leave_payload: Dictionary = {}
 
 func _ready() -> void:
+	_load_identity()
 	_load_session()
 	set_process(true)
 	connect_to_server()
@@ -54,9 +65,17 @@ func _process(delta: float) -> void:
 		if state == WebSocketPeer.STATE_OPEN:
 			connection_status_changed.emit("Connected")
 			send_message(Protocol.HELLO, {"client": "godot", "protocol_version": Protocol.VERSION})
-			if not room_code.is_empty() and not reconnect_token.is_empty():
+			if _leave_pending:
+				_send_detached_leave()
+			elif _auto_reconnect_after_drop and has_room_session():
+				_auto_reconnect_after_drop = false
 				send_message(Protocol.RECONNECT, {"room_code": room_code, "reconnect_token": reconnect_token})
+			elif has_room_session():
+				send_message(Protocol.SESSION_CHECK, {"room_code": room_code, "reconnect_token": reconnect_token})
 		elif state == WebSocketPeer.STATE_CLOSED:
+			if _attached_to_room and not _leave_pending:
+				_auto_reconnect_after_drop = true
+			_attached_to_room = false
 			connection_status_changed.emit("Disconnected")
 
 	if state == WebSocketPeer.STATE_CLOSED:
@@ -68,6 +87,14 @@ func _process(delta: float) -> void:
 	if state != WebSocketPeer.STATE_OPEN:
 		return
 	_reconnect_elapsed = 0.0
+	if _leave_pending:
+		_leave_elapsed += delta
+		if _leave_elapsed >= 2.5:
+			_leave_elapsed = 0.0
+			if _attached_to_room:
+				send_message(Protocol.LEAVE_ROOM, _leave_payload)
+			else:
+				_send_detached_leave()
 
 	while _socket.get_available_packet_count() > 0:
 		_handle_packet(_socket.get_packet().get_string_from_utf8())
@@ -78,27 +105,58 @@ func _process(delta: float) -> void:
 		send_message(Protocol.PING, {"client_time": Time.get_ticks_msec()})
 
 func create_room(nickname: String) -> void:
-	send_message(Protocol.CREATE_ROOM, {"nickname": nickname})
+	set_identity_nickname(nickname)
+	send_message(Protocol.CREATE_ROOM, {"nickname": nickname, "identity_id": identity_player_id})
 
 func join_room(room_code: String, nickname: String) -> void:
+	set_identity_nickname(nickname)
 	send_message(Protocol.JOIN_ROOM, {
 		"room_code": room_code.strip_edges().to_upper(),
 		"nickname": nickname,
+		"identity_id": identity_player_id,
 	})
 
 func leave_room() -> void:
-	var payload := {"room_code": room_code, "player_id": player_id}
-	# Clear persistent state before the network round-trip. Even if the tab closes
-	# immediately afterward, the next launch must show Home instead of reconnecting.
-	_clear_session()
+	if _leave_pending or not has_room_session():
+		return
+	_leave_payload = {"room_code": room_code, "player_id": player_id, "reconnect_token": reconnect_token}
 	_leave_pending = true
-	# Leaving is a local navigation action as well as a server mutation. Return to
-	# Home immediately instead of trapping the user behind a network round-trip.
-	room_left.emit(payload)
+	_leave_elapsed = 0.0
 	if _socket.get_ready_state() == WebSocketPeer.STATE_OPEN:
-		send_message(Protocol.LEAVE_ROOM, payload)
+		if _attached_to_room:
+			send_message(Protocol.LEAVE_ROOM, _leave_payload)
+		else:
+			_send_detached_leave()
 	else:
-		_leave_pending = false
+		connect_to_server()
+
+func discard_saved_session() -> void:
+	leave_room()
+
+func resume_saved_session() -> void:
+	if has_room_session() and _socket.get_ready_state() == WebSocketPeer.STATE_OPEN:
+		send_message(Protocol.RECONNECT, {"room_code": room_code, "reconnect_token": reconnect_token})
+
+func has_room_session() -> bool:
+	return not room_code.is_empty() and not reconnect_token.is_empty()
+
+func has_identity() -> bool:
+	return not identity_player_id.is_empty() and not nickname.is_empty()
+
+func set_identity_nickname(value: String) -> void:
+	var clean := value.strip_edges().left(20)
+	if clean.is_empty():
+		return
+	if identity_player_id.is_empty():
+		identity_player_id = Crypto.new().generate_random_bytes(16).hex_encode()
+	nickname = clean
+	_save_identity()
+	identity_changed.emit(nickname)
+
+func update_nickname(value: String) -> void:
+	set_identity_nickname(value)
+	if _attached_to_room:
+		send_message(Protocol.UPDATE_NICKNAME, {"nickname": nickname})
 
 func send_player_input(direction: Vector2, sequence: int) -> void:
 	send_message(Protocol.PLAYER_INPUT, {
@@ -142,17 +200,29 @@ func _handle_packet(text: String) -> void:
 		Protocol.HELLO:
 			pass
 		Protocol.ROOM_CREATED:
+			_attached_to_room = true
 			_remember_session(payload)
 			room_created.emit(payload)
 		Protocol.ROOM_JOINED:
+			_attached_to_room = true
 			_remember_session(payload)
 			room_joined.emit(payload)
 		Protocol.ROOM_LEFT:
-			var was_requested_locally := _leave_pending
 			_leave_pending = false
+			_leave_elapsed = 0.0
+			_attached_to_room = false
+			_auto_reconnect_after_drop = false
 			_clear_session()
-			if not was_requested_locally:
-				room_left.emit(payload)
+			room_left.emit(payload)
+		Protocol.SESSION_STATUS:
+			var session_state := str(payload.get("status", "invalid"))
+			if session_state != "active":
+				_clear_session()
+			session_status.emit(payload)
+		Protocol.NICKNAME_UPDATED:
+			nickname_updated.emit(payload)
+		Protocol.PLAYER_TAKEOVER:
+			player_takeover.emit(payload)
 		Protocol.PLAYER_JOINED:
 			player_joined.emit(payload)
 		Protocol.PLAYER_LEFT:
@@ -179,13 +249,12 @@ func _handle_packet(text: String) -> void:
 			pass
 		Protocol.ERROR:
 			var error_code := str(payload.get("code", "ERROR"))
-			# A cached client can briefly meet an older Render instance that does
-			# not yet understand LEAVE_ROOM. The local session is already cleared;
-			# replace the socket so the legacy server also releases its room context,
-			# and suppress its developer-facing UNKNOWN_TYPE message.
-			if _leave_pending and error_code == "UNKNOWN_TYPE":
+			if _leave_pending and error_code in ["NOT_IN_ROOM", "ROOM_NOT_FOUND", "RECONNECT_FAILED"]:
+				var finished_payload := _leave_payload.duplicate()
 				_leave_pending = false
-				_restart_connection_after_legacy_leave()
+				_attached_to_room = false
+				_clear_session()
+				room_left.emit(finished_payload)
 				return
 			if error_code == "RECONNECT_FAILED" or (error_code == "ROOM_NOT_FOUND" and not reconnect_token.is_empty()):
 				_clear_session()
@@ -194,13 +263,9 @@ func _handle_packet(text: String) -> void:
 			server_error.emit("UNKNOWN_TYPE", "Unknown server message: %s" % type)
 
 
-func _restart_connection_after_legacy_leave() -> void:
-	if _socket.get_ready_state() == WebSocketPeer.STATE_OPEN:
-		_socket.close(1000, "leave room compatibility")
-	_socket = WebSocketPeer.new()
-	_last_state = WebSocketPeer.STATE_CLOSED
-	_reconnect_elapsed = 0.0
-	call_deferred("connect_to_server")
+func _send_detached_leave() -> void:
+	if _socket.get_ready_state() == WebSocketPeer.STATE_OPEN and _leave_pending:
+		send_message(Protocol.LEAVE_SESSION, _leave_payload)
 
 func _remember_session(payload: Dictionary) -> void:
 	room_code = str(payload.get("room_code", room_code))
@@ -231,6 +296,34 @@ func _clear_session() -> void:
 		var config := ConfigFile.new()
 		config.set_value("session", "data", "")
 		config.save("user://network_session.cfg")
+
+func _save_identity() -> void:
+	var data := JSON.stringify({"player_id": identity_player_id, "nickname": nickname})
+	if OS.has_feature("web"):
+		var storage: JavaScriptObject = JavaScriptBridge.get_interface("localStorage")
+		if storage != null:
+			storage.setItem("boardgame_identity", data)
+	else:
+		var config := ConfigFile.new()
+		config.set_value("identity", "data", data)
+		config.save("user://player_identity.cfg")
+
+func _load_identity() -> void:
+	var data := ""
+	if OS.has_feature("web"):
+		var storage: JavaScriptObject = JavaScriptBridge.get_interface("localStorage")
+		if storage != null:
+			data = str(storage.getItem("boardgame_identity"))
+	else:
+		var config := ConfigFile.new()
+		if config.load("user://player_identity.cfg") == OK:
+			data = str(config.get_value("identity", "data", ""))
+	if data.is_empty() or data == "<null>":
+		return
+	var parsed: Variant = JSON.parse_string(data)
+	if parsed is Dictionary:
+		identity_player_id = str(parsed.get("player_id", ""))
+		nickname = str(parsed.get("nickname", ""))
 
 func _load_session() -> void:
 	var data := ""

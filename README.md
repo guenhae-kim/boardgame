@@ -69,12 +69,16 @@ Node Room: authority_state + public_state + private_states[player_id]
 기본 `HELLO/CREATE_ROOM/JOIN_ROOM/PING/PONG/ERROR`에 다음 흐름을 사용합니다.
 
 - 로비: `RECONNECT`, `LOBBY_STATE`, `LOBBY_CPU`, `START_GAME`
+- 세션 수명주기: `SESSION_CHECK`, `SESSION_STATUS`, `LEAVE_ROOM`, `LEAVE_SESSION`, `ROOM_LEFT`
+- 플레이어 정보: `UPDATE_NICKNAME`, `NICKNAME_UPDATED`, `PLAYER_TAKEOVER`
 - 권위 게임: `GAME_AUTHORITY_REQUEST`, `GAME_ACTION`, `GAME_ACTION_REQUEST`, `GAME_COMMIT`, `GAME_UPDATE`
 - 시간 초과: `GAME_TIMEOUT_REQUEST` (Node deadline 만료 → 현재 authority가 완전한 legal Action 생성)
 - 연출 장벽: `GAME_READY`, `GAME_UNLOCK`
 - 채팅: `CHAT_SEND`, `CHAT_MESSAGE`
 
 채팅은 Room 안에서만 broadcast되며 공백 차단, 200자 제한, 350ms rate limit이 적용됩니다. 게임 Action 처리와 별도 경로입니다.
+
+브라우저의 영구 `player identity`(identity id/닉네임)와 일시적인 `room session`(방 코드/좌석/reconnect token)은 별도 저장됩니다. 새 페이지는 로컬 세션만으로 자동 입장하지 않고 `SESSION_CHECK`로 서버의 active session 여부를 검증합니다. 명시적 Leave는 서버 ACK 뒤에만 room session을 지우며, 진행 중인 좌석은 즉시 CPU로 전환되고 기존 token은 폐기됩니다. 종료된 게임은 active resume 후보가 아닙니다.
 
 ## 로컬 실행과 검증
 
